@@ -1,0 +1,44 @@
+﻿# Entorno virtual
+.venv/
+venv/
+env/
+ENV/
+
+# Credenciales
+.env
+*.env
+
+# Datos
+data/raw/
+data/processed/
+data/features/
+data/final/
+*.csv
+*.json
+*.html
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+.Python
+*.so
+
+# Jupyter
+.ipynb_checkpoints
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Modelos
+models/*.pkl
+models/*.joblib
+
+.cache
+.spotify_cache
