@@ -182,6 +182,19 @@ def main():
             venues_str = ", ".join(str(v) for v in venues[:3])
             print(f"   - {a}: {venues_str}")
 
+    # ── Preservar ediciones manuales de tier_sala ─────────────────────────────
+    if Path(args.output).exists():
+        df_prev = pd.read_csv(args.output)[['nombre_buscado', 'tier_sala', 'notas']]
+        df = df.merge(df_prev, on='nombre_buscado', how='left', suffixes=('', '_prev'))
+        existentes = df['tier_sala_prev'].notna()
+        df.loc[existentes, 'tier_sala'] = df.loc[existentes, 'tier_sala_prev']
+        df.loc[existentes, 'notas']     = df.loc[existentes, 'notas_prev'].fillna('')
+        df = df.drop(columns=['tier_sala_prev', 'notas_prev'])
+        nuevos_count = (~existentes).sum()
+        print(f"   🔒 {existentes.sum()} artistas con tier_sala preservado")
+        if nuevos_count:
+            print(f"   🆕 {nuevos_count} artistas nuevos añadidos")
+
     # ── Guardar ───────────────────────────────────────────────────────────────
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(args.output, index=False, encoding="utf-8")

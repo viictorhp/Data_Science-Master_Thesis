@@ -12,14 +12,15 @@ Variables nuevas respecto a spotify_ids.csv:
   Top tracks:  track_name, popularity, duration_ms, explicit, num_artistas
 
 Notas:
-  - artist_albums: se llama via sp._get() para evitar que spotipy añada
-    country=None, que rompe la request en la API actual.
+  - artist_albums: se usa sp._get("artists/{id}/albums") directamente
+    para evitar que spotipy añada country=None. Más fiable que search.
   - audio_features: deprecado desde nov 2024, se omite.
   - artist_top_tracks: requiere OAuth de usuario, se sustituye por search.
 """
 
 import os
 import time
+import requests
 import pandas as pd
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
@@ -71,30 +72,49 @@ def safe_call(fn, *args, retries=3, **kwargs):
     return None
 
 
+def _get_albums_page(artist_id: str, offset: int) -> dict | None:
+    """Llama a artists/{id}/albums via requests directo (sp._get tiene bug con limit)."""
+    token = sp.auth_manager.get_access_token(as_dict=False)
+    url = f"https://api.spotify.com/v1/artists/{artist_id}/albums"
+    params = {
+        "include_groups": "album,single,compilation",
+        "market": "ES",
+        "limit": 50,
+        "offset": offset,
+    }
+    headers = {"Authorization": f"Bearer {token}"}
+    for attempt in range(3):
+        try:
+            r = requests.get(url, params=params, headers=headers, timeout=10)
+            if r.status_code == 429:
+                wait = int(r.headers.get("Retry-After", 10))
+                print(f"  [rate limit] esperando {wait}s...")
+                time.sleep(wait)
+                continue
+            if r.status_code in (400, 403, 404):
+                return None
+            r.raise_for_status()
+            return r.json()
+        except requests.RequestException as e:
+            print(f"  [error red] {e}, reintentando...")
+            time.sleep(5 * (attempt + 1))
+    return None
+
+
 def get_discografia(artist_id: str, nombre: str) -> dict:
-    """Obtiene stats de discografía via search (artist_albums no disponible con CC)."""
+    """Obtiene stats de discografía via artists/{id}/albums (endpoint directo por artist_id)."""
     albums_raw, singles_raw, eps_raw = [], [], []
 
     offset = 0
-    while offset < 200:
-        res = safe_call(
-            sp.search,
-            q=f"artist:{nombre}",
-            type="album",
-            limit=10,
-            offset=offset,
-            market="ES"
-        )
+    while True:
+        res = _get_albums_page(artist_id, offset)
         if not res:
             break
-        items = res.get("albums", {}).get("items", [])
+        items = res.get("items", [])
         if not items:
             break
         for item in items:
-            # Filtrar solo releases donde este artista es el principal
-            if not any(a["id"] == artist_id for a in item.get("artists", [])):
-                continue
-            album_type = item.get("album_type", "")
+            album_type   = item.get("album_type", "")
             release_date = item.get("release_date", "")
             if album_type == "album":
                 albums_raw.append(release_date)
@@ -102,9 +122,9 @@ def get_discografia(artist_id: str, nombre: str) -> dict:
                 singles_raw.append(release_date)
             elif album_type in ("compilation", "ep"):
                 eps_raw.append(release_date)
-        if not res.get("albums", {}).get("next"):
+        if not res.get("next"):
             break
-        offset += 20
+        offset += 50
         time.sleep(DELAY)
 
     # Fechas de lanzamientos
@@ -197,8 +217,9 @@ nuevos_tracks = []
 print(f"\nProcesando {len(df_ids)} artistas...\n")
 
 for i, row in df_ids.iterrows():
-    nombre    = row["nombre_buscado"]
-    artist_id = row["artist_id"]
+    nombre         = row["nombre_buscado"]
+    nombre_spotify = row.get("nombre_spotify") or nombre
+    artist_id      = row["artist_id"]
 
     if artist_id in procesados:
         print(f"  [{i+1}/{len(df_ids)}] Omitido (ya existe): {nombre}")
@@ -207,7 +228,7 @@ for i, row in df_ids.iterrows():
     print(f"  [{i+1}/{len(df_ids)}] {nombre} ...", flush=True)
 
     # ── Discografía ───────────────────────────────────────────────────────────
-    disc = get_discografia(artist_id, nombre)
+    disc = get_discografia(artist_id, nombre_spotify)
     disc["nombre_buscado"] = nombre
     disc["artist_id"]      = artist_id
     nuevas_disc.append(disc)
@@ -217,7 +238,7 @@ for i, row in df_ids.iterrows():
     time.sleep(DELAY)
 
     # ── Top tracks ────────────────────────────────────────────────────────────
-    tracks = get_top_tracks(artist_id, nombre)
+    tracks = get_top_tracks(artist_id, nombre_spotify)
     nuevos_tracks.extend(tracks)
     print(f"    top tracks: {len(tracks)} canciones")
 

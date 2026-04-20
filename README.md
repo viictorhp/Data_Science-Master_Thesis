@@ -147,6 +147,15 @@ Fichero central con la variable objetivo. Los tiers originales (0-4) se fusionar
 | 2 | `medio` | 200 – 2.000 personas | Planta Baja, Copera (Granada) · El Sol, Razzmatazz, La Riviera |
 | 3 | `alto` | > 2.000 personas | Palacio de Deportes · WiZink, Movistar Arena, estadios, festivales |
 
+### Alcance geográfico de los tiers
+
+Los tiers son **nacionales**, no locales. El criterio es la capacidad del recinto, independientemente de la ciudad:
+
+- Un artista `medio` puede tocar en Planta Baja (Granada), Razzmatazz (Barcelona) o La Riviera (Madrid) — todos están en el mismo rango de aforo.
+- La escena de Granada está sobrerepresentada en el dataset porque el etiquetado manual se hizo con conocimiento directo de esa escena, pero los tiers son válidos a nivel nacional.
+
+No es necesario ampliar la lista de salas de referencia para el MVP — los tres tiers por capacidad ya cubren el espectro completo de la industria musical española.
+
 ### Proceso de etiquetado
 
 El etiquetado es **semisupervisado**: aproximadamente la mitad de las etiquetas se infirieron automáticamente desde el historial de venues de setlist.fm (`scripts/generar_labels.py`), y la otra mitad se asignaron **manualmente** basándose en conocimiento directo de la escena musical española (sold-outs, actividad reciente, historial en Granada no capturado por las APIs).
@@ -258,20 +267,39 @@ Los **outliers extremos** (Quevedo ~1.8B vistas, Bad Gyal ~1.5B) se mantienen co
 
 ## Modelado (`notebooks/02_modelado.ipynb`)
 
-Comparativa de 6 modelos con **StratifiedKFold k=5** (garantiza representación proporcional de las 3 clases en cada fold).
+### Estrategia de validación
 
-**Métricas**: accuracy + F1 macro (trata igual las 3 clases independientemente de su tamaño).
+Se usa **StratifiedKFold k=5** en lugar de train/test split. Con n=125 artistas un hold-out del 20% dejaría solo ~25 artistas de test — demasiado poco para métricas fiables. Con CV k=5 cada artista aparece exactamente **una vez en test**, evaluado por un modelo que no lo ha visto en entrenamiento (sin data leakage). Las métricas reportadas son la media ± desviación estándar de los 5 folds.
 
-| Modelo | Features | Escalado | `class_weight` |
-|--------|----------|----------|----------------|
-| Dummy (most_frequent) | — | — | — |
-| Dummy (stratified) | — | — | — |
-| Regresión Logística | 21 (lineal) | RobustScaler | `balanced` |
-| SVM (kernel RBF) | 21 (lineal) | RobustScaler | `balanced` |
-| Random Forest | 26 (arbol) | No | `balanced_subsample` |
-| XGBoost | 26 (arbol) | No | — |
+> **Caveat**: con n=125 la desviación estándar es alta (~±5-12 puntos). Diferencias de 2-3 puntos entre modelos no son estadísticamente significativas.
 
-El notebook también incluye: matriz de confusión del mejor modelo, feature importance (RF por MDI y XGBoost por gain), y análisis de errores por artista usando `cross_val_predict`.
+### Baselines
+
+Los baselines son el suelo mínimo que cualquier modelo real debe superar. Se usan dos `DummyClassifier` que no aprenden nada:
+
+| Baseline | Estrategia | Accuracy |
+|----------|-----------|----------|
+| `most_frequent` | Siempre predice `bajo` (clase mayoritaria, 48/125) | 38.4% |
+| `stratified` | Predice aleatoriamente respetando la distribución de clases | ~25.6% |
+
+El umbral relevante es el 38.4%: si un modelo no supera "predecir siempre bajo", es inútil.
+
+### Modelos y resultados
+
+| Modelo | Features | Escalado | `class_weight` | Accuracy (CV5) | F1 macro (CV5) |
+|--------|----------|----------|----------------|---------------|----------------|
+| Dummy (most_frequent) | — | — | — | 0.384 ± 0.020 | 0.185 ± 0.007 |
+| Dummy (stratified) | — | — | — | 0.256 ± 0.093 | 0.221 ± 0.082 |
+| Regresión Logística | 21 (lineal) | RobustScaler | `balanced` | 0.728 ± 0.059 | 0.719 ± 0.053 |
+| SVM (kernel RBF) | 21 (lineal) | RobustScaler | `balanced` | 0.712 ± 0.059 | 0.698 ± 0.059 |
+| Random Forest | 26 (arbol) | No | `balanced_subsample` | 0.736 ± 0.120 | 0.733 ± 0.124 |
+| **XGBoost** | **26 (arbol)** | **No** | **—** | **0.792 ± 0.089** | **0.793 ± 0.087** |
+
+**XGBoost es el mejor modelo** (+41 puntos sobre el baseline más fuerte). Todos los modelos reales superan claramente los baselines, confirmando que las features tienen poder predictivo real sobre el tier de sala.
+
+Los modelos lineales (LR, SVM) son sorprendentemente competitivos usando solo 21 features escaladas, lo que sugiere que la relación entre las features log-transformadas y el target es aproximadamente lineal. Random Forest tiene más varianza (±0.120) que XGBoost (±0.089) — los árboles individuales son más sensibles a la partición del fold con este tamaño de dataset.
+
+El notebook también incluye: matriz de confusión del mejor modelo (predicciones out-of-fold), feature importance (RF por MDI y XGBoost por gain), y análisis de los 26 artistas mal clasificados — casi todos en fronteras adyacentes (bajo↔medio o medio↔alto).
 
 ---
 

@@ -131,12 +131,28 @@ def main():
 
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
 
-    collector = SpotifyCollector()
-    df = collector.procesar_lista(artistas)
+    # Cargar CSV existente y omitir artistas ya procesados
+    df_existente = pd.DataFrame()
+    ya_procesados = set()
+    if os.path.exists(args.output):
+        df_existente = pd.read_csv(args.output)
+        ya_procesados = set(df_existente['nombre_buscado'].str.lower())
+        print(f"📂 {len(df_existente)} artistas ya en {args.output} — se omitirán")
 
+    nuevos = [a for a in artistas if a.lower() not in ya_procesados]
+    if not nuevos:
+        print("✓ No hay artistas nuevos que procesar")
+        return
+
+    print(f"🆕 {len(nuevos)} artistas nuevos a procesar")
+
+    collector = SpotifyCollector()
+    df_nuevos = collector.procesar_lista(nuevos)
+
+    df = pd.concat([df_existente, df_nuevos], ignore_index=True)
     df.to_csv(args.output, index=False, encoding='utf-8')
     print(f"\n💾 IDs guardados en: {args.output}")
-    print(f"📊 Total: {len(df)} artistas procesados")
+    print(f"📊 Total: {len(df)} artistas ({len(df_existente)} previos + {len(df_nuevos)} nuevos)")
 
 
 if __name__ == '__main__':

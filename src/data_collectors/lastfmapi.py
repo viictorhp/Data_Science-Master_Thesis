@@ -149,17 +149,34 @@ def main():
 
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
 
-    collector = LastFMCollector()
-    df = collector.procesar_lista(artistas)
+    # Cargar CSV existente y omitir artistas ya procesados
+    df_existente = pd.DataFrame()
+    ya_procesados = set()
+    if os.path.exists(args.output):
+        df_existente = pd.read_csv(args.output)
+        ya_procesados = set(df_existente['nombre_buscado'].str.lower())
+        print(f"📂 {len(df_existente)} artistas ya en {args.output} — se omitirán")
 
-    # Cruzar con spotify_ids.csv para añadir artist_id
+    nuevos = [a for a in artistas if a.lower() not in ya_procesados]
+    if not nuevos:
+        print("✓ No hay artistas nuevos que procesar")
+        return
+
+    print(f"🆕 {len(nuevos)} artistas nuevos a procesar")
+
+    collector = LastFMCollector()
+    df_nuevos = collector.procesar_lista(nuevos)
+
+    # Cruzar con spotify_ids.csv para añadir artist_id a los nuevos
     if os.path.exists(args.spotify_ids):
         df_spotify = pd.read_csv(args.spotify_ids)[['nombre_buscado', 'artist_id', 'spotify_uri']]
-        df = df.merge(df_spotify, on='nombre_buscado', how='left')
+        df_nuevos = df_nuevos.merge(df_spotify, on='nombre_buscado', how='left')
         print(f"🔗 Cruzado con {args.spotify_ids}")
 
+    df = pd.concat([df_existente, df_nuevos], ignore_index=True)
     df.to_csv(args.output, index=False, encoding='utf-8')
     print(f"\n💾 Datos guardados en: {args.output}")
+    print(f"📊 Total: {len(df)} artistas ({len(df_existente)} previos + {len(df_nuevos)} nuevos)")
 
     if not df.empty:
         print(f"\n📊 ESTADÍSTICAS:")
