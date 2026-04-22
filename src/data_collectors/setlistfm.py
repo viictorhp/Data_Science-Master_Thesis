@@ -118,6 +118,7 @@ print(f"MBIDs conocidos desde Last.fm: {len(mbids_conocidos)}")
 # ── Cargar ya procesados (incremental) ──────────────────────────────────────
 df_existe          = pd.read_csv(SETLISTS_CSV) if SETLISTS_CSV.exists() else pd.DataFrame()
 nombres_procesados = set(df_existe["nombre"].str.lower()) if not df_existe.empty else set()
+mbids_procesados   = set(df_existe["setlistfm_mbid"].dropna().astype(str)) if not df_existe.empty else set()
 
 with open(ARTISTS_FILE, encoding="utf-8") as f:
     nombres = [l.strip() for l in f if l.strip()]
@@ -139,8 +140,12 @@ for nombre in nombres:
     # 1. Intentar con MBID conocido de Last.fm (más fiable)
     mbid = mbids_conocidos.get(nombre.lower().strip())
     if mbid:
+        if mbid in mbids_procesados:
+            print(f"omitido (MBID ya en CSV)")
+            omitidos.append(nombre)
+            continue
         print(f"ok  MBID desde Last.fm: {mbid}")
-        nombre_sf = nombre   # ya sabemos quién es
+        nombre_sf = nombre
     else:
         # 2. Buscar por nombre con validación de similitud
         resultado = buscar_artista_por_nombre(nombre)
@@ -150,6 +155,10 @@ for nombre in nombres:
             nuevas_filas.append({"nombre": nombre})
             continue
         mbid, nombre_sf = resultado
+        if mbid in mbids_procesados:
+            print(f"omitido (MBID ya en CSV: '{nombre_sf}')")
+            omitidos.append(nombre)
+            continue
         print(f"ok  MBID: {mbid} (nombre: '{nombre_sf}')")
 
     setlists = obtener_setlists(mbid, max_paginas=5)

@@ -3,23 +3,24 @@ Extrae features de Spotify por artista usando los IDs de spotify_ids.csv.
 
 Genera dos CSVs:
   - spotify_discografia.csv   → una fila por artista con stats de discografía
-  - spotify_top_tracks.csv    → una fila por canción (top 10 por artista)
+  - spotify_tracks.csv    → una fila por canción (top 10 por artista)
 
 Variables nuevas respecto a spotify_ids.csv:
   Discografía: num_albums, num_singles, num_eps, num_total_releases,
                primer_lanzamiento, ultimo_lanzamiento, anos_activo,
                releases_por_ano
-  Top tracks:  track_name, popularity, duration_ms, explicit, num_artistas
+  Top tracks:  track_name, duration_ms, explicit, num_artistas
 
 Notas:
   - artist_albums: se usa sp._get("artists/{id}/albums") directamente
     para evitar que spotipy añada country=None. Más fiable que search.
   - audio_features: deprecado desde nov 2024, se omite.
-  - artist_top_tracks: requiere OAuth de usuario, se sustituye por search.
+  - artist_spotify_tracks: requiere OAuth de usuario, se sustituye por search.
 """
 
 import os
 import time
+import argparse
 import requests
 import pandas as pd
 import spotipy
@@ -33,7 +34,7 @@ load_dotenv()
 # ── Configuración ─────────────────────────────────────────────────────────────
 SPOTIFY_IDS_CSV  = Path("data/raw/spotify_ids.csv")
 DISCOGRAFIA_CSV  = Path("data/raw/spotify_discografia.csv")
-TOP_TRACKS_CSV   = Path("data/raw/spotify_top_tracks.csv")
+TOP_TRACKS_CSV   = Path("data/raw/spotify_tracks.csv")
 DISCOGRAFIA_CSV.parent.mkdir(parents=True, exist_ok=True)
 
 DELAY      = 0.5   # segundos entre llamadas a la API
@@ -49,7 +50,7 @@ print("ok Cliente Spotify inicializado")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-def safe_call(fn, *args, retries=3, **kwargs):
+def safe_call(fn, *args, retries=3, silent_4xx=True, **kwargs):
     """Llama a la API con reintentos ante errores de red o rate limit."""
     for i in range(retries):
         try:
@@ -60,7 +61,9 @@ def safe_call(fn, *args, retries=3, **kwargs):
                 print(f"  [rate limit] esperando {wait}s...")
                 time.sleep(wait)
             elif e.http_status in (400, 403, 404):
-                return None  # error de cliente, no reintentar
+                if not silent_4xx:
+                    print(f"  [Spotify {e.http_status}] {e}")
+                return None
             else:
                 print(f"  [Spotify error {e.http_status}] {e}")
                 time.sleep(5)
@@ -73,30 +76,28 @@ def safe_call(fn, *args, retries=3, **kwargs):
 
 
 def _get_albums_page(artist_id: str, offset: int) -> dict | None:
-    """Llama a artists/{id}/albums via requests directo (sp._get tiene bug con limit)."""
+    """Obtiene una página de álbumes via requests con market (no country) y sin encode de comas."""
     token = sp.auth_manager.get_access_token(as_dict=False)
-    url = f"https://api.spotify.com/v1/artists/{artist_id}/albums"
-    params = {
-        "include_groups": "album,single,compilation",
-        "market": "ES",
-        "limit": 50,
-        "offset": offset,
-    }
+    url = (
+        f"https://api.spotify.com/v1/artists/{artist_id}/albums"
+        f"?include_groups=album,single&market=ES&limit=10&offset={offset}"
+    )
     headers = {"Authorization": f"Bearer {token}"}
     for attempt in range(3):
         try:
-            r = requests.get(url, params=params, headers=headers, timeout=10)
+            r = requests.get(url, headers=headers, timeout=10)
             if r.status_code == 429:
                 wait = int(r.headers.get("Retry-After", 10))
                 print(f"  [rate limit] esperando {wait}s...")
                 time.sleep(wait)
                 continue
             if r.status_code in (400, 403, 404):
+                print(f"  [albums error {r.status_code}] {r.text[:300]}")
                 return None
             r.raise_for_status()
             return r.json()
         except requests.RequestException as e:
-            print(f"  [error red] {e}, reintentando...")
+            print(f"  [error red] {e}")
             time.sleep(5 * (attempt + 1))
     return None
 
@@ -164,27 +165,26 @@ def get_discografia(artist_id: str, nombre: str) -> dict:
     }
 
 
-def get_top_tracks(artist_id: str, nombre_artista: str) -> list[dict]:
-    """Obtiene tracks del artista via search (artist_top_tracks requiere OAuth)."""
-    res = safe_call(
-        sp.search,
-        q=f"artist:{nombre_artista}",
-        type="track",
-        limit=10,
-        market="ES"
-    )
-    if not res:
-        return []
-
-    tracks = [
-        t for t in res.get("tracks", {}).get("items", [])
-        if any(a["id"] == artist_id for a in t.get("artists", []))
-    ]
+def get_spotify_tracks(artist_id: str, nombre_artista: str) -> list[dict]:
+    """Obtiene top tracks via search filtrado por artist_id."""
+    tracks = []
+    for query in [f'artist:"{nombre_artista}"', f"artist:{nombre_artista}"]:
+        for limit in [10, 5]:
+            res = safe_call(sp.search, q=query, type="track", limit=limit, market="ES")
+            if res:
+                tracks = [
+                    t for t in res.get("tracks", {}).get("items", [])
+                    if any(a["id"] == artist_id for a in t.get("artists", []))
+                ]
+                if tracks:
+                    break
+        if tracks:
+            break
     if not tracks:
         return []
 
     filas = []
-    for track in tracks:
+    for track in tracks[:10]:
         filas.append({
             "nombre_artista":   nombre_artista,
             "artist_id":        artist_id,
@@ -192,7 +192,6 @@ def get_top_tracks(artist_id: str, nombre_artista: str) -> list[dict]:
             "track_name":       track.get("name"),
             "album_name":       track.get("album", {}).get("name"),
             "release_date":     track.get("album", {}).get("release_date"),
-            "popularity":       track.get("popularity"),
             "duration_ms":      track.get("duration_ms"),
             "explicit":         track.get("explicit"),
             "num_artistas":     len(track.get("artists", [])),
@@ -202,12 +201,30 @@ def get_top_tracks(artist_id: str, nombre_artista: str) -> list[dict]:
 
 
 # ── Cargar artistas ───────────────────────────────────────────────────────────
+parser = argparse.ArgumentParser(description="Extrae features de Spotify por artista")
+parser.add_argument("--force", nargs="+", metavar="ARTISTA",
+                    help="Re-procesar estos artistas aunque ya existan en los CSVs")
+args = parser.parse_args()
+
 df_ids = pd.read_csv(SPOTIFY_IDS_CSV)
 df_ids = df_ids[df_ids["artist_id"].notna()].reset_index(drop=True)
 
 # Carga incremental
 df_disc_existe   = pd.read_csv(DISCOGRAFIA_CSV) if DISCOGRAFIA_CSV.exists() else pd.DataFrame()
 df_tracks_existe = pd.read_csv(TOP_TRACKS_CSV)  if TOP_TRACKS_CSV.exists()  else pd.DataFrame()
+
+# Eliminar artistas forzados para re-procesarlos
+if args.force and not df_disc_existe.empty:
+    force_ids = set(
+        df_ids.loc[df_ids["nombre_buscado"].str.lower().isin(
+            {a.lower() for a in args.force}), "artist_id"]
+    )
+    df_disc_existe   = df_disc_existe[~df_disc_existe["artist_id"].isin(force_ids)]
+    df_disc_existe.to_csv(DISCOGRAFIA_CSV, index=False, encoding="utf-8")
+    if not df_tracks_existe.empty:
+        df_tracks_existe = df_tracks_existe[~df_tracks_existe["artist_id"].isin(force_ids)]
+        df_tracks_existe.to_csv(TOP_TRACKS_CSV, index=False, encoding="utf-8")
+    print(f"Re-procesando artistas: {args.force}")
 
 procesados = set(df_disc_existe["artist_id"]) if not df_disc_existe.empty else set()
 
@@ -233,12 +250,13 @@ for i, row in df_ids.iterrows():
     disc["artist_id"]      = artist_id
     nuevas_disc.append(disc)
     print(f"    discografia: {disc['num_total_releases']} releases "
-          f"({disc['num_albums']} albums, {disc['num_singles']} singles)")
+          f"({disc['num_albums']} albums, {disc['num_singles']} singles) "
+          f"| ultimo: {disc['ultimo_lanzamiento']}")
 
     time.sleep(DELAY)
 
     # ── Top tracks ────────────────────────────────────────────────────────────
-    tracks = get_top_tracks(artist_id, nombre_spotify)
+    tracks = get_spotify_tracks(artist_id, nombre_spotify)
     nuevos_tracks.extend(tracks)
     print(f"    top tracks: {len(tracks)} canciones")
 

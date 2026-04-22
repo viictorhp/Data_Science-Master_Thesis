@@ -4,7 +4,7 @@
 
 Proyecto de fin de máster para predecir el **tier de sala** de artistas de rap/urbano español — es decir, el tamaño máximo de recinto que un artista puede llenar en España. El dataset cubre 125 artistas de la escena urbana española, desde artistas completamente underground hasta nombres con presencia en festivales y palacios de deportes.
 
-El pipeline recoge datos de 5 fuentes (Spotify, Last.fm, YouTube, setlist.fm) mediante sus APIs, aplica ingeniería de características, y entrena modelos de clasificación multiclase. Los resultados se analizan en notebooks Jupyter.
+El pipeline recoge datos de 6 fuentes (Spotify, Last.fm, YouTube, setlist.fm, Google Trends + YouTube reciente) mediante sus APIs, aplica ingeniería de características, y entrena modelos de clasificación multiclase. Los resultados se analizan en notebooks Jupyter.
 
 El foco está en artistas **poco conocidos o emergentes**, lo que implica datos escasos o inexistentes en las APIs estándar y requiere validación y corrección manual.
 
@@ -125,6 +125,25 @@ Presencia digital en YouTube: tamaño de audiencia, actividad y engagement.
 - Columnas: `nombre_buscado`, `canal_youtube`, `suscriptores`, `vistas_totales`, `num_videos`, `fecha_creacion`
 
 **Correcciones manuales aplicadas**: 17 artistas tenían canales incorrectos o desactualizados en el CSV original. Se corrigieron manualmente los suscriptores y se nularon las vistas de los canales erróneos (BEJO, Rels B, Morad, Dano, Cecilio G, Choclock, Yung Beef, entre otros). Dos artistas (Xico Palma, GREKKY) no tienen canal de YouTube — sus valores se dejaron a nulo.
+
+### Tendencias (`src/data_collectors/tendencias.py`) — en desarrollo
+
+Combina dos fuentes para medir el **buzz actual** de cada artista, con especial atención a artistas emergentes y poco conocidos donde otras señales son escasas:
+
+- **Google Trends** (`pytrends`): interés de búsqueda semanal normalizado (0-100) para España en los últimos 12 meses. Para artistas con volumen muy bajo el valor es 0, lo que en sí mismo es información útil (= sin presencia en búsquedas web).
+- **YouTube vídeos recientes** (YouTube Data API v3, misma key que `youtube.py`): vistas acumuladas de los últimos 5 vídeos del artista. Esta señal es más sensible que Google Trends para artistas pequeños, ya que un vídeo viral en un canal pequeño sí se refleja aquí.
+
+- CSV de salida: `data/raw/tendencias.csv`
+- Columnas previstas: `nombre_buscado`, `gtrends_interes_medio`, `gtrends_pico_maximo`, `yt_vistas_recientes`, `yt_videos_recientes`
+
+#### Por qué se descartó TikTok
+
+TikTok es hoy la principal plataforma de viralización para artistas emergentes del rap/urbano español. Sin embargo, no existe una API pública accesible para obtener datos de artistas de terceros:
+
+- La **TikTok Research API** requiere aprobación institucional y está limitada a investigación académica formal.
+- Las librerías no oficiales (`TikTokApi`) usan automatización de navegador, son inestables ante actualizaciones de TikTok y van contra los Términos de Servicio, lo que las hace inadecuadas para un proyecto reproducible.
+
+Se optó por YouTube reciente como proxy de viralización digital, ya que los artistas que se viralizan en TikTok suelen subir simultáneamente sus vídeos a YouTube.
 
 ### setlist.fm (`src/data_collectors/setlistfm.py`)
 

@@ -7,7 +7,7 @@ Fuentes:
   - artistas_labels.csv      → target (nivel: bajo/medio/alto, tier_sala: 1/2/3)
   - spotify_discografia.csv  → discografía, cadencia, actividad reciente,
                                 ratio madurez de carrera
-  - spotify_top_tracks.csv   → popularidad de tracks, duración, explicit, collabs
+  - spotify_tracks.csv   → popularidad de tracks, duración, explicit, collabs
   - lastfm_artistas.csv      → oyentes, scrobbles, engagement, géneros
   - youtube_artistas.csv     → audiencia digital, engagement, antigüedad canal
   - setlistfm_conciertos.csv → actividad en directo, geografía, detalle de set
@@ -66,7 +66,7 @@ def _features_spotify_discografia(df: pd.DataFrame) -> pd.DataFrame:
     })
 
 
-def _features_spotify_top_tracks(df: pd.DataFrame) -> pd.DataFrame:
+def _features_spotify_tracks(df: pd.DataFrame) -> pd.DataFrame:
     """
     Duración media de tracks, % explicit y % colaboraciones.
     (popularity bloqueada por Spotify desde nov 2024 — eliminada)
@@ -197,7 +197,7 @@ def build_artist_features() -> pd.DataFrame:
 
     sources = [
         _features_spotify_discografia(_load("spotify_discografia.csv")),
-        _features_spotify_top_tracks(_load("spotify_top_tracks.csv")),
+        _features_spotify_tracks(_load("spotify_tracks.csv")),
         _features_lastfm(_load("lastfm_artistas.csv")),
         _features_youtube(_load("youtube_artistas.csv")),
         _features_setlistfm(_load("setlistfm_conciertos.csv")),
