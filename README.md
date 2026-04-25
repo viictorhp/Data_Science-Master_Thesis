@@ -2,7 +2,7 @@
 
 ## Descripción del proyecto
 
-Proyecto de fin de máster para predecir el **tier de sala** de artistas de rap/urbano español — es decir, el tamaño máximo de recinto que un artista puede llenar en España. El dataset cubre 125 artistas de la escena urbana española, desde artistas completamente underground hasta nombres con presencia en festivales y palacios de deportes.
+Proyecto de fin de máster para predecir el **tier de sala** de artistas de rap/urbano español — es decir, el tamaño máximo de recinto que un artista puede llenar en España. El dataset cubre **157 artistas** de la escena urbana española, desde artistas completamente underground hasta nombres con presencia en festivales y palacios de deportes.
 
 El pipeline recoge datos de 6 fuentes (Spotify, Last.fm, YouTube, setlist.fm, Google Trends + YouTube reciente) mediante sus APIs, aplica ingeniería de características, y entrena modelos de clasificación multiclase. Los resultados se analizan en notebooks Jupyter.
 
@@ -49,7 +49,7 @@ Es un problema de **clasificación multiclase ordinal**: las 3 clases tienen ord
 | `medio` | 2 | 200 – 2.000 personas | BEJO, Choclock, Metrika, La Zowi |
 | `alto` | 3 | > 2.000 personas (festivales, palacios) | Bad Gyal, Quevedo, Morad, Rels B |
 
-**Distribución**: bajo=48 · medio=45 · alto=32 · **total=125 artistas**
+**Distribución**: bajo=62 · medio=57 · alto=38 · **total=157 artistas**
 
 La variable objetivo está en `artistas_labels.csv` como `nivel` (texto) y `target` (entero 1/2/3).
 `nombre_buscado` es el identificador del artista — **nunca entra como variable predictora**.
@@ -58,7 +58,7 @@ La variable objetivo está en `artistas_labels.csv` como `nivel` (texto) y `targ
 
 ### ¿Con qué lo predecimos? — Variables predictoras `X`
 
-Señales de presencia digital, actividad musical y trayectoria recogidas de 5 APIs:
+Señales de presencia digital, actividad musical y trayectoria recogidas de 6 fuentes:
 
 | Fuente | Features | ¿Qué mide? |
 |--------|----------|------------|
@@ -67,21 +67,22 @@ Señales de presencia digital, actividad musical y trayectoria recogidas de 5 AP
 | **Last.fm** | 6 | Audiencia histórica: oyentes únicos, scrobbles totales, engagement de fans |
 | **YouTube** | 7 | Presencia digital: suscriptores, vistas, engagement del canal |
 | **setlist.fm** | 5 | Actividad en directo: conciertos, países, % en España |
+| **Tendencias** (Google Trends + YT reciente) | 5 | Buzz actual: interés de búsqueda y vistas recientes |
 
 **Total tras preprocesado** (`src/features/preprocess.py`):
 
 | Modo | Features | Escalado | Modelos |
 |------|----------|----------|---------|
-| `arbol` | **26** | Sin escalar | Random Forest, XGBoost |
-| `lineal` | **21** | RobustScaler | Regresión Logística, SVM |
+| `arbol` | **31** | Sin escalar | Random Forest, XGBoost, LightGBM |
+| `lineal` | **23** | RobustScaler | Regresión Logística, SVM, Regresión Ordinal |
 
-En modo `lineal` se eliminan adicionalmente `lfm_oyentes`, `lfm_scrobbles`, `yt_suscriptores`, `yt_vistas_totales` (sustituidas por sus versiones log para evitar multicolinealidad) y `sp_pct_colabs` (r≈−0.02, solo añade ruido).
+En modo `lineal` se eliminan adicionalmente las versiones raw cuando existe versión log (`lfm_oyentes`, `lfm_scrobbles`, `yt_suscriptores`, `yt_vistas_totales`, `trend_yt_vistas_recientes`, `trend_gtrends_interes_medio`), `sp_pct_colabs` (r≈−0.02, solo añade ruido), y `trend_yt_vistas_por_video_reciente` (r=0.996 con `trend_yt_vistas_recientes_log` — multicolinealidad casi perfecta).
 
-Las 4 features descartadas en ambos modos por el EDA (señal no significativa):
-`sp_num_eps` · `sp_num_total_releases` · `sp_dias_desde_ultimo_release` · `yt_edad_canal_anos`
+Features descartadas en ambos modos por el EDA (señal no significativa):
+`sp_num_eps` · `sp_num_total_releases` · `sp_dias_desde_ultimo_release` · `yt_edad_canal_anos` · `trend_yt_videos_recientes`
 
 El preprocesado no genera ningún fichero — devuelve `X`, `y` en memoria listos para entrenar.
-Verificado: **NaN en X = 0** en ambos modos sobre los 125 artistas.
+Verificado: **NaN en X = 0** en ambos modos sobre los 157 artistas.
 
 ---
 
@@ -124,26 +125,21 @@ Presencia digital en YouTube: tamaño de audiencia, actividad y engagement.
 - CSV de salida: `data/raw/youtube_artistas.csv`
 - Columnas: `nombre_buscado`, `canal_youtube`, `suscriptores`, `vistas_totales`, `num_videos`, `fecha_creacion`
 
-**Correcciones manuales aplicadas**: 17 artistas tenían canales incorrectos o desactualizados en el CSV original. Se corrigieron manualmente los suscriptores y se nularon las vistas de los canales erróneos (BEJO, Rels B, Morad, Dano, Cecilio G, Choclock, Yung Beef, entre otros). Dos artistas (Xico Palma, GREKKY) no tienen canal de YouTube — sus valores se dejaron a nulo.
+**Correcciones manuales aplicadas**: varios artistas tenían canales incorrectos o desactualizados. Se corrigieron manualmente los suscriptores y se nularon las vistas de los canales erróneos (BEJO, Rels B, Morad, Dano, Cecilio G, Choclock, Yung Beef, entre otros). Dos artistas (Xico Palma, GREKKY) no tienen canal de YouTube — sus valores se dejaron a nulo.
 
-### Tendencias (`src/data_collectors/tendencias.py`) — en desarrollo
+### Tendencias (`src/data_collectors/tendencias.py`)
 
-Combina dos fuentes para medir el **buzz actual** de cada artista, con especial atención a artistas emergentes y poco conocidos donde otras señales son escasas:
+Combina dos fuentes para medir el **buzz actual** de cada artista, con especial atención a artistas emergentes donde otras señales son escasas:
 
-- **Google Trends** (`pytrends`): interés de búsqueda semanal normalizado (0-100) para España en los últimos 12 meses. Para artistas con volumen muy bajo el valor es 0, lo que en sí mismo es información útil (= sin presencia en búsquedas web).
-- **YouTube vídeos recientes** (YouTube Data API v3, misma key que `youtube.py`): vistas acumuladas de los últimos 5 vídeos del artista. Esta señal es más sensible que Google Trends para artistas pequeños, ya que un vídeo viral en un canal pequeño sí se refleja aquí.
+- **Google Trends** (`pytrends`): interés de búsqueda semanal normalizado (0-100) para España en los últimos 12 meses.
+- **YouTube vídeos recientes** (YouTube Data API v3): vistas acumuladas de los últimos 5 vídeos del artista.
 
 - CSV de salida: `data/raw/tendencias.csv`
-- Columnas previstas: `nombre_buscado`, `gtrends_interes_medio`, `gtrends_pico_maximo`, `yt_vistas_recientes`, `yt_videos_recientes`
+- Columnas: `nombre_buscado`, `gtrends_interes_medio`, `gtrends_pico_maximo`, `yt_vistas_recientes`, `yt_videos_recientes`, `yt_vistas_por_video_reciente`
 
 #### Por qué se descartó TikTok
 
-TikTok es hoy la principal plataforma de viralización para artistas emergentes del rap/urbano español. Sin embargo, no existe una API pública accesible para obtener datos de artistas de terceros:
-
-- La **TikTok Research API** requiere aprobación institucional y está limitada a investigación académica formal.
-- Las librerías no oficiales (`TikTokApi`) usan automatización de navegador, son inestables ante actualizaciones de TikTok y van contra los Términos de Servicio, lo que las hace inadecuadas para un proyecto reproducible.
-
-Se optó por YouTube reciente como proxy de viralización digital, ya que los artistas que se viralizan en TikTok suelen subir simultáneamente sus vídeos a YouTube.
+TikTok es hoy la principal plataforma de viralización para artistas emergentes del rap/urbano español. Sin embargo, no existe una API pública accesible: la TikTok Research API requiere aprobación institucional, y las librerías no oficiales van contra los Términos de Servicio. Se optó por YouTube reciente como proxy.
 
 ### setlist.fm (`src/data_collectors/setlistfm.py`)
 
@@ -152,7 +148,6 @@ Historial de conciertos (setlists) por artista. Fuente más directa para medir a
 - CSV de salida: `data/raw/setlistfm_conciertos.csv`
 - Columnas: `nombre`, `setlistfm_mbid`, `setlist_id`, `fecha`, `venue_id`, `venue_nombre`, `ciudad`, `pais`, `num_canciones`, `tiene_encore`, `canciones`, `url_setlist`
 - Lógica incremental: omite artistas ya procesados en ejecuciones anteriores.
-- Si un artista no tiene conciertos, se añade una fila con `nombre` y el resto vacío.
 
 ---
 
@@ -166,36 +161,16 @@ Fichero central con la variable objetivo. Los tiers originales (0-4) se fusionar
 | 2 | `medio` | 200 – 2.000 personas | Planta Baja, Copera (Granada) · El Sol, Razzmatazz, La Riviera |
 | 3 | `alto` | > 2.000 personas | Palacio de Deportes · WiZink, Movistar Arena, estadios, festivales |
 
-### Alcance geográfico de los tiers
-
-Los tiers son **nacionales**, no locales. El criterio es la capacidad del recinto, independientemente de la ciudad:
-
-- Un artista `medio` puede tocar en Planta Baja (Granada), Razzmatazz (Barcelona) o La Riviera (Madrid) — todos están en el mismo rango de aforo.
-- La escena de Granada está sobrerepresentada en el dataset porque el etiquetado manual se hizo con conocimiento directo de esa escena, pero los tiers son válidos a nivel nacional.
-
-No es necesario ampliar la lista de salas de referencia para el MVP — los tres tiers por capacidad ya cubren el espectro completo de la industria musical española.
-
 ### Proceso de etiquetado
 
-El etiquetado es **semisupervisado**: aproximadamente la mitad de las etiquetas se infirieron automáticamente desde el historial de venues de setlist.fm (`scripts/generar_labels.py`), y la otra mitad se asignaron **manualmente** basándose en conocimiento directo de la escena musical española (sold-outs, actividad reciente, historial en Granada no capturado por las APIs).
-
-Los casos inferidos automáticamente fueron revisados y corregidos donde el venue no era representativo (venues en el extranjero, salas pequeñas dentro de complejos grandes, falsos positivos).
-
-### Columnas
-
-- `nombre_buscado` — identificador del artista
-- `tier_inferido` — tier calculado automáticamente desde setlist.fm
-- `venue_mayor` — venue que determinó el tier inferido (solo referencia)
-- `tier_sala` — **etiqueta definitiva usada como target**
-- `nivel` — texto: bajo / medio / alto
-- `notas` — justificación cuando fue corregido manualmente
+El etiquetado es **semisupervisado**: ~50% de las etiquetas se infirieron automáticamente desde el historial de venues de setlist.fm (`scripts/generar_labels.py`), y el resto se asignaron manualmente basándose en conocimiento directo de la escena musical española.
 
 ---
 
 ## Feature Engineering (`src/features/build_features.py`)
 
 Combina todas las fuentes raw en la matriz `data/processed/artist_features.csv`.
-**125 artistas × 30 features** (+ 4 columnas de metadata/target).
+**157 artistas × 36 features** (+ 4 columnas de metadata/target).
 
 ### Features por fuente
 
@@ -249,38 +224,51 @@ Combina todas las fuentes raw en la matriz `data/processed/artist_features.csv`.
 | `sl_num_paises` | Países distintos donde ha actuado |
 | `sl_pct_espana` | % de conciertos en España |
 
+#### Tendencias (Google Trends + YouTube reciente)
+| Feature | Descripción |
+|---------|-------------|
+| `trend_gtrends_interes_medio` | Interés medio de búsqueda en España (últimos 12 meses) |
+| `trend_gtrends_log` | Versión log |
+| `trend_yt_vistas_recientes` | Vistas acumuladas de los últimos 5 vídeos |
+| `trend_yt_vistas_recientes_log` | Versión log |
+| `trend_yt_videos_recientes` | Número de vídeos recientes con datos |
+| `trend_yt_vistas_por_video_reciente` | Media de vistas por vídeo reciente |
+
 ### Imputación de NaN
 
 | Columnas | NaN aprox. | Causa | Imputación |
 |----------|------------|-------|------------|
-| `sl_num_conciertos`, `sl_num_paises` | 44% | Sin registros en setlist.fm | **0** (sin conciertos = 0 conciertos) |
-| `sl_avg_canciones`, `sl_pct_encore`, `sl_pct_espana` | 44% | Sin registros en setlist.fm | **Mediana global** (0 implicaría setlist vacío) |
-| `yt_vistas_totales`, `yt_vistas_log`, `yt_num_videos`, `yt_vistas_por_*` | 14% | Canales corregidos sin datos de vistas | **Mediana por nivel** (evita mezclar artistas de distinto tier) |
-| `sp_anos_activo`, `sp_releases_por_ano` | 3% | Sin lanzamientos en Spotify | **0** |
-| `yt_suscriptores` | 2% | Sin canal YouTube | **0** |
-| `lfm_*` | < 1% | No encontrado en Last.fm | **0** |
+| `sl_num_conciertos`, `sl_num_paises` | 41% | Sin registros en setlist.fm | **0** (sin conciertos = 0 conciertos) |
+| `sl_avg_canciones`, `sl_pct_encore`, `sl_pct_espana` | 41% | Sin registros en setlist.fm | **Mediana global** (0 implicaría setlist vacío) |
+| `yt_vistas_totales`, `yt_vistas_log`, `yt_num_videos`, `yt_vistas_por_*` | ~5% | Canales corregidos sin datos de vistas | **Mediana por nivel** |
+| `trend_gtrends_*` | ~5% | Fallos de rate-limit | **Mediana por nivel** |
+| `trend_yt_vistas_recientes*`, `trend_yt_videos_recientes` | ~5% | Sin canal YouTube | **0** |
+| `sp_anos_activo`, `sp_releases_por_ano` | <4% | Sin lanzamientos en Spotify | **0** |
+| `yt_suscriptores`, `lfm_*` | <1% | Sin canal o sin perfil | **0** |
 
 ---
 
 ## Análisis exploratorio (`notebooks/01_eda.ipynb`)
 
-El EDA analiza la distribución de las 30 features y su relación con el target usando:
+El EDA analiza las 36 features y su relación con el target usando **Kruskal-Wallis** (H, discriminación entre clases) y **correlación de Spearman** (r, fuerza y dirección):
 
-- **Kruskal-Wallis** (H): test no paramétrico para medir si una feature discrimina significativamente entre niveles.
-- **Correlación de Spearman** (r): fuerza y dirección de la relación feature-target.
-
-**Principales hallazgos:**
+**27 de 36 features son significativas** (Kruskal-Wallis p < 0.05).
 
 | Feature | H (Kruskal-Wallis) | r (Spearman) | Conclusión |
 |---------|-------------------|--------------|------------|
-| `lfm_oyentes_log` | ~100 | +0.75 | Feature más discriminativa del dataset |
-| `yt_suscriptores_log` | ~85 | +0.70 | Muy alta señal |
-| `sl_num_conciertos` | ~60 | +0.60 | Directo mucho más relevante para artistas alto |
-| `sp_num_albums` | ~30 | +0.35 | Señal moderada — carrera consolidada |
+| `lfm_oyentes` | 61.6 | +0.63 | Feature más discriminativa — audiencia histórica |
+| `lfm_scrobbles` | 59.2 | +0.62 | Alta señal — engagement acumulado |
+| `yt_suscriptores` | 53.3 | +0.59 | Muy alta señal — canal digital |
+| `yt_vistas_totales` | 51.5 | +0.57 | Muy alta señal |
+| `yt_vistas_por_video` | 46.6 | +0.55 | Calidad del contenido |
+| `sl_num_conciertos` | — | +0.47 | Actividad en directo — feature #1 en importancia de modelos |
 | `sp_num_eps` | ~0 | ~0 | Sin varianza útil — eliminada |
 | `yt_edad_canal_anos` | ~1 | +0.10 | No significativa — eliminada |
+| `trend_yt_videos_recientes` | — | — | Varianza casi nula (>95% tienen 5 vídeos) — eliminada |
 
-Los **outliers extremos** (Quevedo ~1.8B vistas, Bad Gyal ~1.5B) se mantienen como datos válidos — son artistas `alto` reales. Se usa RobustScaler en modo lineal para mitigar su efecto en los coeficientes.
+**Pares altamente correlacionados** (|r| > 0.85): raw↔log (r≈1.0); `trend_yt_vistas_por_video_reciente`↔`trend_yt_vistas_recientes_log` (r=0.996); `lfm_scrobbles`↔`lfm_oyentes` (r=0.913); `sl_pct_espana`↔`sl_num_paises` (r=−0.961). Las versiones raw se eliminan en modo lineal para evitar multicolinealidad.
+
+**Outliers extremos** (Quevedo, Bad Gyal, Morad): valores de YouTube 10-50× superiores a la mediana de `alto`. Se mantienen como datos válidos. Se usa RobustScaler en modo lineal para mitigar su efecto.
 
 ---
 
@@ -288,73 +276,57 @@ Los **outliers extremos** (Quevedo ~1.8B vistas, Bad Gyal ~1.5B) se mantienen co
 
 ### Estrategia de validación
 
-Se usa **StratifiedKFold k=5** en lugar de train/test split. Con n=125 artistas un hold-out del 20% dejaría solo ~25 artistas de test — demasiado poco para métricas fiables. Con CV k=5 cada artista aparece exactamente **una vez en test**, evaluado por un modelo que no lo ha visto en entrenamiento (sin data leakage). Las métricas reportadas son la media ± desviación estándar de los 5 folds.
+**StratifiedKFold k=5**: con n=157 artistas un hold-out del 20% dejaría solo ~31 artistas de test. Con CV k=5 cada artista aparece exactamente **una vez en test**, sin data leakage. Métricas reportadas: media ± desviación estándar de los 5 folds.
 
-> **Caveat**: con n=125 la desviación estándar es alta (~±5-12 puntos). Diferencias de 2-3 puntos entre modelos no son estadísticamente significativas.
+### Resultados (157 artistas, abril 2025)
 
-### Baselines
+| Modelo | Features | Accuracy (CV5) | F1 macro (CV5) | Estabilidad |
+|--------|----------|---------------|----------------|-------------|
+| Dummy most_frequent | — | 39.5% ± 0.9% | 18.9% ± 0.3% | — |
+| Dummy stratified | — | 37.0% ± 6.9% | 33.6% ± 7.2% | — |
+| Regresión Logística | 23 (lineal) | 55.4% ± 3.3% | 55.4% ± 4.8% | ✅ estable |
+| Regresión Ordinal (mord) | 23 (lineal) | 60.5% ± 3.9% | 57.8% ± 7.5% | ✅ estable |
+| SVM (kernel RBF) | 23 (lineal) | 59.3% ± 6.2% | 57.4% ± 8.1% | ⚠️ variable |
+| LightGBM | 31 (arbol) | 60.5% ± 8.9% | 58.8% ± 9.8% | ❌ inestable |
+| Random Forest | 31 (arbol) | 62.4% ± 2.9% | 61.0% ± 3.8% | ✅ estable |
+| **XGBoost** | **31 (arbol)** | **63.0% ± 8.3%** | **61.6% ± 9.4%** | ❌ inestable |
 
-Los baselines son el suelo mínimo que cualquier modelo real debe superar. Se usan dos `DummyClassifier` que no aprenden nada:
+**XGBoost tiene la mayor media** (+23.5 puntos sobre el baseline). **Random Forest es el más estable** (±2.9% vs ±8.3% de XGBoost). Los intervalos se solapan — ambos son candidatos para el tuning de hiperparámetros.
 
-| Baseline | Estrategia | Accuracy |
-|----------|-----------|----------|
-| `most_frequent` | Siempre predice `bajo` (clase mayoritaria, 48/125) | 38.4% |
-| `stratified` | Predice aleatoriamente respetando la distribución de clases | ~25.6% |
+La **Regresión Ordinal** (mord.LogisticIT) supera a LR y SVM: la hipótesis ordinal bajo < medio < alto aporta señal real sin necesitar `class_weight`. No llega a los ensembles, pero confirma que el target tiene estructura ordinal genuina.
 
-El umbral relevante es el 38.4%: si un modelo no supera "predecir siempre bajo", es inútil.
+### Análisis de errores (XGBoost OOF)
 
-### Modelos y resultados
+- **58/157 mal clasificados** — accuracy OOF: 63.1%
+- `bajo`: F1=0.75 — bien clasificada (señal digital baja es discriminativa)
+- `medio`: F1=0.55 — la más difícil; errores simétricos 13→bajo, 13→alto
+- `alto`: F1=0.55 — 14 artistas clasificados como medio (Yung Beef, Rels B, SAIKO, Maka)
+- Errores de 2 saltos (alto→bajo, bajo→alto): solo 7 casos — el modelo respeta la ordinalidad implícitamente
 
-| Modelo | Features | Escalado | `class_weight` | Accuracy (CV5) | F1 macro (CV5) |
-|--------|----------|----------|----------------|---------------|----------------|
-| Dummy (most_frequent) | — | — | — | 0.384 ± 0.020 | 0.185 ± 0.007 |
-| Dummy (stratified) | — | — | — | 0.256 ± 0.093 | 0.221 ± 0.082 |
-| Regresión Logística | 21 (lineal) | RobustScaler | `balanced` | 0.728 ± 0.059 | 0.719 ± 0.053 |
-| SVM (kernel RBF) | 21 (lineal) | RobustScaler | `balanced` | 0.712 ± 0.059 | 0.698 ± 0.059 |
-| Random Forest | 26 (arbol) | No | `balanced_subsample` | 0.736 ± 0.120 | 0.733 ± 0.124 |
-| **XGBoost** | **26 (arbol)** | **No** | **—** | **0.792 ± 0.089** | **0.793 ± 0.087** |
+### Feature importance (RF y XGBoost — consenso)
 
-**XGBoost es el mejor modelo** (+41 puntos sobre el baseline más fuerte). Todos los modelos reales superan claramente los baselines, confirmando que las features tienen poder predictivo real sobre el tier de sala.
+1. `sl_num_conciertos` — #1 en ambos modelos (⚠️ 41% NaN imputados como 0: posible señal espuria)
+2. `lfm_oyentes` — señal más limpia, Spearman r=+0.63
+3. `yt_vistas_totales` / `yt_suscriptores`
+4. `sl_num_paises` / `lfm_scrobbles`
 
-Los modelos lineales (LR, SVM) son sorprendentemente competitivos usando solo 21 features escaladas, lo que sugiere que la relación entre las features log-transformadas y el target es aproximadamente lineal. Random Forest tiene más varianza (±0.120) que XGBoost (±0.089) — los árboles individuales son más sensibles a la partición del fold con este tamaño de dataset.
-
-El notebook también incluye: matriz de confusión del mejor modelo (predicciones out-of-fold), feature importance (RF por MDI y XGBoost por gain), y análisis de los 26 artistas mal clasificados — casi todos en fronteras adyacentes (bajo↔medio o medio↔alto).
+Las features de tendencias (Google Trends, YouTube reciente) tienen importancia secundaria — complementan pero no dominan frente a métricas acumuladas históricas.
 
 ---
 
 ## Decisiones y cambios de rumbo
 
-Durante el proyecto se exploraron varias fuentes y enfoques que finalmente se descartaron:
-
 ### Ticketmaster — descartado
 
-Se integró la Discovery API v2 de Ticketmaster (`TICKETMASTER_API_KEY`), que devuelve artistas y eventos en España. Se descartó por dos motivos fundamentales:
-
-1. **Cobertura insuficiente**: solo cubre ~50% de los artistas del dataset. Los artistas underground y emergentes (precisamente el foco del proyecto) directamente no aparecen.
-2. **Sin historial**: Ticketmaster solo devuelve eventos próximos o muy recientes — no permite reconstruir la trayectoria pasada de un artista, que es lo que necesitamos para predecir su tier.
-
-Los CSVs (`ticketmaster_artistas.csv`, `ticketmaster_eventos.csv`) y el colector (`src/data_collectors/ticketmaster.py`) fueron eliminados del proyecto.
+Cobertura insuficiente (~50% de artistas) y sin historial de eventos pasados. CSVs y colector eliminados.
 
 ### Songkick — descartado
 
-Se exploró el scraping de Songkick (`scrapingsongkick.py`) para obtener datos de conciertos en España con información adicional (sold-out, precios, fans asistentes). Se descartó porque:
-
-1. **Cobertura aún peor que Ticketmaster** para artistas underground de la escena española.
-2. **Scraping frágil**: dependía de la estructura HTML del sitio, que cambia frecuentemente.
-3. **setlist.fm cubre mejor los mismos datos** para este tipo de artistas, con API oficial y sin riesgo legal.
+Cobertura peor que Ticketmaster para artistas underground españoles. Scraping frágil y setlist.fm cubre mejor los mismos datos con API oficial.
 
 ### Spotify `popularity`, `followers`, `audio_features` — bloqueados desde noviembre 2024
 
-Se intentó extraer estas features como señales muy predictivas del tier:
-- `popularity` (score 0-100) — habría sido la feature más discriminativa del modelo.
-- `followers` — número de seguidores del artista en Spotify.
-- `audio_features` (`danceability`, `energy`, `valence`, `tempo`...) — características musicales del track.
-
-Spotify bloqueó los tres endpoints en noviembre 2024, incluso con OAuth y client credentials. Se creó un colector adicional (`src/data_collectors/spotify_artistas.py`) intentando acceder al endpoint directo de artista, pero también devuelve 403. El fichero permanece en el proyecto como documentación del intento pero no se usa en el pipeline.
-
-### Salas de Granada (`granadavenues.csv`) — relegada a referencia
-
-Se construyó un fichero de salas de Granada con capacidades para mapear venues de setlist.fm a tier. Finalmente el etiquetado se hizo directamente sobre `artistas_labels.csv` mediante keywords de venues conocidos a nivel nacional (no solo Granada), por lo que el fichero quedó como referencia de aforos pero no entra en el pipeline de features.
+Spotify bloqueó estos endpoints en noviembre 2024, incluso con OAuth. `popularity` habría sido la feature más discriminativa. Se creó `src/data_collectors/spotify_artistas.py` documentando el intento (devuelve 403).
 
 ---
 
@@ -362,4 +334,12 @@ Se construyó un fichero de salas de Granada con capacidades para mapear venues 
 
 ### Matching de artistas
 
-Los scripts usan **fuzzy matching** (`difflib.SequenceMatcher`) con umbral 60% para evitar coger artistas incorrectos. Artistas con nombres cortos o genéricos son propensos a falsos positivos y se revisaron manualmente. El único caso sin datos en Last.fm es **MARCE**, que no tiene perfil en la plataforma — sus campos quedan vacíos y se imputan a 0 en el preprocesado.
+Los scripts usan **fuzzy matching** (`difflib.SequenceMatcher`) con umbral 60%. Artistas con nombres cortos o genéricos son propensos a falsos positivos y se revisaron manualmente.
+
+### Imputación de setlist.fm
+
+El 41% de artistas tiene `sl_num_conciertos=0` por ausencia de datos en setlist.fm (no necesariamente porque no hayan actuado). Esta imputación puede inflar artificialmente la importancia de esta feature — es la principal limitación conocida del modelo actual.
+
+### Correcciones manuales de YouTube
+
+Varios artistas compartían canales o tenían canales incorrectos. Los suscriptores corregidos están en `youtube_artistas.csv` y **no deben modificarse automáticamente** — son valores validados manualmente.

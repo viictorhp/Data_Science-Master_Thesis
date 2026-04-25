@@ -7,10 +7,12 @@ Fuentes:
   - artistas_labels.csv      → target (nivel: bajo/medio/alto, tier_sala: 1/2/3)
   - spotify_discografia.csv  → discografía, cadencia, actividad reciente,
                                 ratio madurez de carrera
-  - spotify_tracks.csv   → popularidad de tracks, duración, explicit, collabs
+  - spotify_tracks.csv       → popularidad de tracks, duración, explicit, collabs
   - lastfm_artistas.csv      → oyentes, scrobbles, engagement, géneros
   - youtube_artistas.csv     → audiencia digital, engagement, antigüedad canal
   - setlistfm_conciertos.csv → actividad en directo, geografía, detalle de set
+  - tendencias.csv           → interés de búsqueda (Google Trends) y actividad
+                                reciente en YouTube (últimos 5 vídeos)
 
 Salida:
   data/processed/artist_features.csv
@@ -146,6 +148,35 @@ def _features_youtube(df: pd.DataFrame) -> pd.DataFrame:
     ]]
 
 
+def _features_tendencias(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Señales de tendencia actuales: interés de búsqueda en Google (España, 12 meses)
+    y actividad reciente en YouTube (vistas + vídeos últimos 5 uploads).
+    trend_yt_vistas_por_video_reciente: engagement reciente por vídeo, más sensible
+    que las vistas totales del canal para detectar artistas en ascenso.
+    """
+    df = df.copy()
+    for col in ["gtrends_interes_medio", "yt_vistas_recientes", "yt_videos_recientes"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    df["trend_gtrends_interes_medio"]        = df["gtrends_interes_medio"]
+    df["trend_gtrends_log"]                  = np.log1p(df["gtrends_interes_medio"])
+    df["trend_yt_vistas_recientes"]          = df["yt_vistas_recientes"]
+    df["trend_yt_vistas_recientes_log"]      = np.log1p(df["yt_vistas_recientes"])
+    df["trend_yt_videos_recientes"]          = df["yt_videos_recientes"]
+    df["trend_yt_vistas_por_video_reciente"] = (
+        df["yt_vistas_recientes"] / df["yt_videos_recientes"].replace(0, np.nan)
+    )
+
+    return df[[
+        "nombre_buscado",
+        "trend_gtrends_interes_medio", "trend_gtrends_log",
+        "trend_yt_vistas_recientes", "trend_yt_vistas_recientes_log",
+        "trend_yt_videos_recientes",
+        "trend_yt_vistas_por_video_reciente",
+    ]]
+
+
 def _features_setlistfm(df: pd.DataFrame) -> pd.DataFrame:
     """
     Actividad en directo: volumen de conciertos, calidad del set (canciones,
@@ -201,6 +232,7 @@ def build_artist_features() -> pd.DataFrame:
         _features_lastfm(_load("lastfm_artistas.csv")),
         _features_youtube(_load("youtube_artistas.csv")),
         _features_setlistfm(_load("setlistfm_conciertos.csv")),
+        _features_tendencias(_load("tendencias.csv")),
     ]
 
     df = labels.copy()

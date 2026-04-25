@@ -16,7 +16,7 @@ VARIABLES PREDICTORAS (X)
   Todas las features del CSV excepto las columnas de metadata/target y las
   features eliminadas en el EDA por baja señal (ver FEATURES_ELIMINAR).
 
-  Para modelos de árbol  → 26 features, sin escalar
+  Para modelos de árbol  → 30 features, sin escalar
   Para regresión lineal  → 22 features (sin versiones raw cuando hay log), RobustScaler
 
 Uso:
@@ -63,6 +63,8 @@ FEATURES_ELIMINAR = [
     "sp_num_total_releases",
     "sp_dias_desde_ultimo_release",
     "yt_edad_canal_anos",
+    # EDA 157 artistas: varianza casi nula (>95% de artistas tienen 5 vídeos recientes)
+    "trend_yt_videos_recientes",
 ]
 
 # ---------------------------------------------------------------------------
@@ -74,13 +76,18 @@ FEATURES_ELIMINAR = [
 # Bad Gyal) que distorsionan los coeficientes aunque usemos RobustScaler.
 # Se conserva solo la versión log, que tiene distribución más normal.
 FEATURES_RAW_SOLO_ARBOL = [
-    "lfm_oyentes",        # reemplazada por lfm_oyentes_log
-    "lfm_scrobbles",      # reemplazada por lfm_scrobbles_log
-    "yt_suscriptores",    # reemplazada por yt_suscriptores_log
-    "yt_vistas_totales",  # reemplazada por yt_vistas_log
+    "lfm_oyentes",                   # reemplazada por lfm_oyentes_log
+    "lfm_scrobbles",                 # reemplazada por lfm_scrobbles_log
+    "yt_suscriptores",               # reemplazada por yt_suscriptores_log
+    "yt_vistas_totales",             # reemplazada por yt_vistas_log
     # sp_pct_colabs: H≈10 pero r≈-0.02, sin señal real sobre el target.
     # En modo lineal se elimina para no añadir ruido al modelo.
     "sp_pct_colabs",
+    # Tendencias: distribuciones muy sesgadas (rango 0–3M+ vistas), se usan versiones log en modo lineal
+    "trend_yt_vistas_recientes",          # reemplazada por trend_yt_vistas_recientes_log
+    "trend_gtrends_interes_medio",        # reemplazada por trend_gtrends_log
+    # EDA 157 artistas: r=0.996 con trend_yt_vistas_recientes_log → multicolinealidad casi perfecta
+    "trend_yt_vistas_por_video_reciente",
 ]
 
 
@@ -137,6 +144,21 @@ def _imputar(df: pd.DataFrame) -> pd.DataFrame:
             df[col] = df.groupby("nivel")[col].transform(
                 lambda s: s.fillna(s.median())
             )
+
+    # Google Trends None = fallo de rate-limit, valor desconocido → mediana por nivel
+    for col in ["trend_gtrends_interes_medio", "trend_gtrends_log"]:
+        if col in df.columns:
+            df[col] = df.groupby("nivel")[col].transform(
+                lambda s: s.fillna(s.median())
+            )
+
+    # YouTube reciente None = artista sin canal → 0 vistas es semánticamente correcto
+    for col in [
+        "trend_yt_vistas_recientes", "trend_yt_vistas_recientes_log",
+        "trend_yt_videos_recientes", "trend_yt_vistas_por_video_reciente",
+    ]:
+        if col in df.columns:
+            df[col] = df[col].fillna(0)
 
     # Resto → 0
     df = df.fillna(0)

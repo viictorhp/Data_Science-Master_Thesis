@@ -136,6 +136,8 @@ def main():
     parser.add_argument('--artists', type=str, default='artistas.txt')
     parser.add_argument('--spotify-ids', type=str, default='data/raw/spotify_ids.csv')
     parser.add_argument('--output', type=str, default='data/raw/lastfm_artistas.csv')
+    parser.add_argument('--force', nargs='+', metavar='ARTISTA',
+                        help='Re-procesar estos artistas aunque ya existan en el CSV')
     args = parser.parse_args()
 
     if not os.path.exists(args.artists):
@@ -154,6 +156,11 @@ def main():
     ya_procesados = set()
     if os.path.exists(args.output):
         df_existente = pd.read_csv(args.output)
+        if args.force:
+            force_lower = {a.lower() for a in args.force}
+            df_existente = df_existente[~df_existente['nombre_buscado'].str.lower().isin(force_lower)]
+            df_existente.to_csv(args.output, index=False, encoding='utf-8')
+            print(f"Re-procesando: {args.force}")
         ya_procesados = set(df_existente['nombre_buscado'].str.lower())
         print(f"📂 {len(df_existente)} artistas ya en {args.output} — se omitirán")
 

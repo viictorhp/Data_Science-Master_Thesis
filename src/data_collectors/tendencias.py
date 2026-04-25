@@ -34,7 +34,7 @@ YOUTUBE_CSV    = Path("data/raw/youtube_artistas.csv")
 OUTPUT_CSV     = Path("data/raw/tendencias.csv")
 OUTPUT_CSV.parent.mkdir(parents=True, exist_ok=True)
 
-DELAY_TRENDS  = 3.0   # Google Trends es sensible al rate limit
+DELAY_TRENDS  = 6.0   # Google Trends es sensible al rate limit
 DELAY_YOUTUBE = 0.5
 
 
@@ -45,15 +45,14 @@ def _init_pytrends() -> TrendReq:
 
 
 def get_trends(pytrends: TrendReq, nombre: str) -> dict:
-    """Interés medio y pico en España durante los últimos 12 meses (escala 0-100)."""
+    """Interés medio en España durante los últimos 12 meses (escala 0-100)."""
     for intento in range(3):
         try:
             pytrends.build_payload([nombre], geo="ES", timeframe="today 12-m")
             df = pytrends.interest_over_time()
             if df.empty or nombre not in df.columns:
-                return {"gtrends_interes_medio": 0, "gtrends_pico_maximo": 0}
-            serie = df[nombre]
-            return {"gtrends_interes_medio": round(float(serie.mean()), 2)}
+                return {"gtrends_interes_medio": 0}
+            return {"gtrends_interes_medio": round(float(df[nombre].mean()), 2)}
         except Exception as e:
             espera = 10 * (intento + 1)
             print(f"  [trends error intento {intento+1}/3] {e} — esperando {espera}s")
@@ -156,8 +155,7 @@ def main():
         print("[aviso] YOUTUBE_API_KEY no encontrada — se omitirán datos de YouTube reciente")
 
     pytrends = _init_pytrends()
-    cols = ["nombre_buscado", "gtrends_interes_medio",
-            "yt_vistas_recientes", "yt_videos_recientes"]
+    cols = ["nombre_buscado", "gtrends_interes_medio", "yt_vistas_recientes", "yt_videos_recientes"]
     total = len(pendientes)
     guardados = 0
 
