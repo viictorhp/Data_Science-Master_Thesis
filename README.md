@@ -13,17 +13,31 @@ El foco está en artistas **poco conocidos o emergentes**, lo que implica datos 
 ## Estructura del proyecto
 
 ```
+app.py               # Página de inicio del dashboard (Landing)
+pages/
+  1_Resultados.py    # Benchmark de modelos, confusión y feature importance
+  2_Prediccion.py    # Formulario de predicción con traza detallada
+  3_Analisis_IA.py   # Chat con agente LangChain + Groq
 src/
   data_collectors/   # Clientes de API para ingesta de datos raw
   features/          # Ingeniería de características y preprocesado
   models/            # Entrenamiento, evaluación y serialización de modelos
-  utils/             # Helpers compartidos (logging, DB, config)
+  agents/
+    explicador.py    # Agente LangChain: explicación inicial + chat de seguimiento
+  utils/
+    log_streamlit.py # Logging de sesión y sidebar persistente
 config/              # Constantes y carga de entorno
 scripts/             # Scripts de entrada (generación de labels, ETL)
 notebooks/           # Análisis exploratorio y modelado
   01_eda.ipynb       # EDA completo con Kruskal-Wallis y correlaciones
   02_modelado.ipynb  # Entrenamiento y comparativa de modelos
+  03_hiperparametros.ipynb  # Ajuste de hiperparámetros XGBoost con RandomizedSearchCV
 tests/               # Tests unitarios e integración
+models/              # Artefactos entrenados (gitignored)
+  xgb_tuned.joblib   # Modelo XGBoost serializado con joblib
+  metadata.json      # Features, parámetros, métricas CV y timestamp del entrenamiento
+reports/
+  figures/           # PNGs generados por los notebooks (comparativas, matrices, importancias)
 data/
   raw/               # CSVs originales de cada fuente (gitignored)
   processed/         # artist_features.csv — matriz de features unificada
@@ -311,6 +325,200 @@ La **Regresión Ordinal** (mord.LogisticIT) supera a LR y SVM: la hipótesis ord
 4. `sl_num_paises` / `lfm_scrobbles`
 
 Las features de tendencias (Google Trends, YouTube reciente) tienen importancia secundaria — complementan pero no dominan frente a métricas acumuladas históricas.
+
+---
+
+## Ajuste de hiperparámetros (`notebooks/03_hiperparametros.ipynb`)
+
+Optimización de XGBoost con `RandomizedSearchCV`: 100 combinaciones aleatorias × CV5 estratificado = 500 fits. Métrica de optimización: F1 macro.
+
+### Resultado
+
+| Modelo | Accuracy (CV5) | F1 macro (CV5) | Estabilidad |
+|--------|---------------|----------------|-------------|
+| XGBoost base | 63.0% ± 8.3% | 61.6% ± 9.4% | ❌ inestable |
+| **XGBoost tuned** | **67.5% ± 4.0%** | **66.9% ± 3.7%** | ✅ estable |
+| Delta | **+4.5 puntos** | **+5.3 puntos** | **std ÷ 2** |
+
+El delta de +5.3% en F1 macro supera el umbral de ±3 puntos a partir del cual la diferencia es interpretable con este tamaño de dataset. La mejora de estabilidad (std ÷ 2) tiene igual o mayor relevancia práctica que la mejora en media.
+
+### Hiperparámetros óptimos
+
+| Parámetro | Base | Tuned | Efecto |
+|-----------|------|-------|--------|
+| `learning_rate` | 0.05 | **0.01** | Aprende más despacio → generaliza mejor |
+| `min_child_weight` | 1 | **5** | Exige 5 muestras mínimo por hoja → evita splits espurios |
+| `reg_alpha` (L1) | 0 | **1.0** | Penalización L1 fuerte → pesos sparse |
+| `reg_lambda` (L2) | 1 | **2.0** | Penalización L2 fuerte → pesos más pequeños |
+| `gamma` | 0 | **0.1** | Exige ganancia mínima para hacer un split |
+| `n_estimators` | 300 | **400** | Más árboles para compensar LR más bajo |
+| `subsample` | 0.8 | **0.7** | Menos filas por árbol → más diversidad |
+| `colsample_bytree` | 0.8 | **0.6** | Menos features por árbol → más diversidad |
+| `max_depth` | 4 | **4** | Sin cambio — profundidad inicial correcta |
+
+El patrón es claro: todos los cambios apuntan a **más regularización**. Con n=157 el principal riesgo es el overfitting, y la búsqueda lo detectó automáticamente.
+
+---
+
+## Modelo serializado (`src/models/train.py` · `src/models/predict.py`)
+
+### Entrenamiento — `train.py`
+
+Entrena el modelo tuned sobre todos los datos y lo serializa en `models/`.
+
+```bash
+python -m src.models.train
+```
+
+**Salida** (27 abril 2026, `acc=0.675 ± 0.040 | f1_macro=0.669 ± 0.037`):
+
+- `models/xgb_tuned.joblib` — modelo listo para inferencia
+- `models/metadata.json` — 31 features esperadas, codificación del target, parámetros y métricas CV
+
+El `metadata.json` es el contrato entre el modelo y el dashboard: garantiza que la inferencia usa exactamente las mismas features que el entrenamiento.
+
+### Inferencia — `predict.py`
+
+Módulo de inferencia que expone `predecir()` para el dashboard y el agente IA.
+El usuario solo proporciona **8 campos accesibles**; el resto se calcula o imputa automáticamente.
+
+```bash
+python -m src.models.predict   # prueba rápida con artista ficticio
+```
+
+```python
+from src.models.predict import predecir
+
+resultado = predecir(
+    sp_num_albums=1, sp_num_singles=6, sp_anos_activo=2,
+    lfm_oyentes=9_000, lfm_scrobbles=300_000,
+    yt_suscriptores=6_000, yt_vistas_totales=800_000,
+    sl_num_conciertos=0,
+)
+# → {"nivel": "bajo", "probabilidades": {"bajo": 0.893, "medio": 0.069, "alto": 0.038}, "features": {...}}
+```
+
+**Campos que pide al usuario:**
+
+| Campo | Feature(s) del modelo |
+|-------|----------------------|
+| Nº álbumes / singles | `sp_num_albums`, `sp_num_singles` |
+| Años activo en Spotify | `sp_anos_activo` |
+| Oyentes Last.fm | `lfm_oyentes`, `lfm_oyentes_log` |
+| Scrobbles Last.fm | `lfm_scrobbles`, `lfm_scrobbles_log`, `lfm_scrobbles_por_oyente` |
+| Suscriptores YouTube | `yt_suscriptores`, `yt_suscriptores_log` |
+| Vistas totales YouTube | `yt_vistas_totales`, `yt_vistas_log`, `yt_vistas_por_suscriptor` |
+| Nº conciertos | `sl_num_conciertos`, `sl_num_paises`, `sl_pct_espana` |
+
+**Campos calculados automáticamente:** `sp_releases_por_ano`, `sp_ratio_albums_singles`, ratios y logs derivados.
+
+**Campos imputados con valores neutros:** `sp_avg_duration_ms` (210.000 ms), `sp_pct_explicit` (0.6), `sp_pct_colabs` (0.3), tendencias → 0.
+
+El campo de texto libre "info del artista" (salas, ciudades, etc.) no entra en el modelo — lo usa el agente LangChain para contextualizar la explicación.
+
+---
+
+## Dashboard Streamlit (`app.py` · `pages/`)
+
+### Arranque
+
+```bash
+# Activar entorno virtual primero
+source .venv/Scripts/activate   # Windows bash
+
+streamlit run app.py
+```
+
+El dashboard necesita dos credenciales en `.env`:
+
+```
+GROQ_API_KEY=tu_clave_groq        # para el agente IA (página 3)
+# Las claves de Spotify/setlist.fm solo son necesarias para recolecar datos nuevos
+```
+
+### Páginas
+
+| Página | Archivo | Descripción |
+|--------|---------|-------------|
+| 🏠 Landing | `app.py` | Métricas del proyecto, descripción del tier system, navegación |
+| 📊 Resultados | `pages/1_Resultados.py` | Benchmark de modelos, XGBoost base vs tuned, matriz de confusión, feature importance |
+| 🎤 Predicción | `pages/2_Prediccion.py` | Formulario de 8 campos, traza detallada del pipeline, resultado con probabilidades |
+| 🤖 Análisis IA | `pages/3_Analisis_IA.py` | Explicación automática del resultado + chat de seguimiento |
+
+### Flujo de uso
+
+1. **🎤 Predicción** — rellena los 8 campos del artista y pulsa *Predecir tier de sala*. El resultado se guarda en `st.session_state`.
+2. **🤖 Análisis IA** — el agente genera automáticamente una explicación y permite hacer preguntas de seguimiento.
+3. **🔄 Nueva predicción** — botón en la barra lateral (o en la página) que limpia el estado y permite analizar otro artista sin recargar la app.
+
+### Traza en tiempo real
+
+Cada operación muestra un panel `st.status()` expandido con todos los pasos: inputs recibidos → features calculadas → modelo cargado → probabilidades → respuesta del LLM. El log de sesión (barra lateral) acumula todos los eventos con timestamp e icono de nivel (`ℹ️ OK ✅ API 🌐 ML 🤖 DATA 📊`).
+
+### Compartir datos entre páginas
+
+```python
+# Página 2 guarda:
+st.session_state["prediccion"] = {
+    "resultado":       {"nivel": "bajo", "probabilidades": {...}, "features": {...}},
+    "nombre":          "Nombre del artista",
+    "info_conciertos": "Texto libre adicional",
+}
+
+# Página 3 lo lee y genera la explicación una sola vez por predicción
+# (se detecta si cambió con id(resultado))
+```
+
+---
+
+## Agente IA (`src/agents/explicador.py`)
+
+Integración de **LangChain + Groq** para explicar las predicciones y responder preguntas sobre ellas.
+
+### Modelo
+
+- Proveedor: **Groq** (inferencia ultra-rápida sobre hardware dedicado)
+- Modelo: `llama-3.3-70b-versatile`
+- Temperatura: `0.3` (respuestas consistentes y factuales)
+
+### API pública
+
+```python
+from src.agents.explicador import generar_explicacion, chat, _system_prompt
+
+# Explicación inicial (llamada única)
+explicacion = generar_explicacion(resultado, nombre, info_adicional)
+
+# Chat de seguimiento (mantiene historial)
+respuesta = chat(
+    historial=historial_previo,
+    pregunta="¿Qué debería mejorar para llegar a nivel medio?",
+    resultado=resultado,
+    nombre=nombre,
+    info_adicional=info,
+)
+```
+
+### System prompt
+
+`_system_prompt()` construye el contexto enviado al LLM con:
+
+- Descripción del sistema de tiers (bajo/medio/alto con aforos)
+- Métricas del modelo (157 artistas, 67.5% accuracy, 66.9% F1)
+- Valores concretos del artista: Spotify, Last.fm, YouTube, conciertos
+- Tier predicho con probabilidades
+- Info adicional de texto libre (si se proporcionó)
+
+El prompt completo es visible en la página **🤖 Análisis IA** mediante un expander colapsable.
+
+### Dependencias
+
+```
+langchain-core>=0.3.0
+langchain-groq>=0.2.0
+```
+
+`langchain-core` se instala automáticamente como dependencia de `langchain-groq`. No se necesita el paquete `langchain` completo.
 
 ---
 
