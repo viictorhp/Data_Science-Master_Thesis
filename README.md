@@ -15,29 +15,42 @@ El foco está en artistas **poco conocidos o emergentes**, lo que implica datos 
 ```
 app.py               # Página de inicio del dashboard (Landing)
 pages/
-  1_Resultados.py    # Benchmark de modelos, confusión y feature importance
-  2_Prediccion.py    # Formulario de predicción con traza detallada
+  1_Resultados.py    # Benchmark de modelos, confusión, feature importance y SHAP global
+  2_Prediccion.py    # Formulario de predicción con traza detallada y waterfall SHAP
   3_Analisis_IA.py   # Chat con agente LangChain + Groq
 src/
   data_collectors/   # Clientes de API para ingesta de datos raw
   features/          # Ingeniería de características y preprocesado
   models/            # Entrenamiento, evaluación y serialización de modelos
+    train.py         # Entrena XGBoost tuned y serializa modelo + metadata
+    predict.py       # Inferencia: 8 inputs → 31 features → tier predicho
+    shap_explainer.py# Explicabilidad SHAP: plots globales e individuales
   agents/
     explicador.py    # Agente LangChain: explicación inicial + chat de seguimiento
   utils/
     log_streamlit.py # Logging de sesión y sidebar persistente
-config/              # Constantes y carga de entorno
-scripts/             # Scripts de entrada (generación de labels, ETL)
+config/
+  youtube_correcciones.py  # Audit trail de canales YouTube corregidos manualmente
+scripts/
+  generar_labels.py  # Etiquetado semisupervisado desde historial de venues
+  generar_shap.py    # Genera plots SHAP globales en reports/figures/
+  validar_setlistfm.py # Valida si el 41% de NaN en sl_num_conciertos es un artefacto
 notebooks/           # Análisis exploratorio y modelado
   01_eda.ipynb       # EDA completo con Kruskal-Wallis y correlaciones
   02_modelado.ipynb  # Entrenamiento y comparativa de modelos
   03_hiperparametros.ipynb  # Ajuste de hiperparámetros XGBoost con RandomizedSearchCV
-tests/               # Tests unitarios e integración
+tests/               # Suite de tests — 100 tests, 100 passed
+  conftest.py        # Fixtures compartidos (DataFrames en memoria, mock del modelo)
+  test_build_features.py   # Tests de las 6 funciones _features_*()
+  test_preprocess.py # Tests de _imputar() y cargar_datos()
+  test_predict.py    # Tests de construir_features() y predecir()
+  test_shap_explainer.py   # Tests de shap_waterfall_fig() y constantes
+pytest.ini           # Configuración de pytest
 models/              # Artefactos entrenados (gitignored)
   xgb_tuned.joblib   # Modelo XGBoost serializado con joblib
   metadata.json      # Features, parámetros, métricas CV y timestamp del entrenamiento
 reports/
-  figures/           # PNGs generados por los notebooks (comparativas, matrices, importancias)
+  figures/           # PNGs de notebooks + plots SHAP (shap_summary_bar, shap_beeswarm_alto)
 data/
   raw/               # CSVs originales de cada fuente (gitignored)
   processed/         # artist_features.csv — matriz de features unificada
@@ -416,6 +429,24 @@ resultado = predecir(
 
 El campo de texto libre "info del artista" (salas, ciudades, etc.) no entra en el modelo — lo usa el agente LangChain para contextualizar la explicación.
 
+### Explicabilidad SHAP (`src/models/shap_explainer.py`)
+
+El módulo SHAP añade dos niveles de explicabilidad al modelo:
+
+**Global** (`calcular_shap_global()`): genera dos plots sobre el dataset de entrenamiento completo y los guarda en `reports/figures/`:
+- `shap_summary_bar.png` — bar plot de la media `|SHAP|` por feature (todas las clases). Más robusto que la importancia MDI de RF ante features correlacionadas.
+- `shap_beeswarm_alto.png` — beeswarm para la clase ALTO: cada punto es un artista, el eje X muestra cuánto empuja esa feature la predicción hacia alto/bajo.
+
+```bash
+python -m scripts.generar_shap   # requiere data/processed/artist_features.csv + models/xgb_tuned.joblib
+```
+
+**Individual** (`shap_waterfall_fig()`): genera un waterfall plot para cada predicción en tiempo real desde el dashboard. Muestra las features que más contribuyen al resultado específico de ese artista, respecto al valor base del modelo.
+
+Ambos plots se renderizan automáticamente en el dashboard:
+- Página **📊 Resultados** → pestaña *SHAP (Global)*
+- Página **🎤 Predicción** → sección *¿Por qué esta predicción?* (tras el resultado)
+
 ---
 
 ## Dashboard Streamlit (`app.py` · `pages/`)
@@ -424,7 +455,7 @@ El campo de texto libre "info del artista" (salas, ciudades, etc.) no entra en e
 
 ```bash
 # Activar entorno virtual primero
-source .venv/Scripts/activate   # Windows bash
+.venv\Scripts\Activate.ps1   # Windows PowerShell
 
 streamlit run app.py
 ```
@@ -433,7 +464,7 @@ El dashboard necesita dos credenciales en `.env`:
 
 ```
 GROQ_API_KEY=tu_clave_groq        # para el agente IA (página 3)
-# Las claves de Spotify/setlist.fm solo son necesarias para recolecar datos nuevos
+# Las claves de Spotify/setlist.fm solo son necesarias para recolectar datos nuevos
 ```
 
 ### Páginas
@@ -441,8 +472,8 @@ GROQ_API_KEY=tu_clave_groq        # para el agente IA (página 3)
 | Página | Archivo | Descripción |
 |--------|---------|-------------|
 | 🏠 Landing | `app.py` | Métricas del proyecto, descripción del tier system, navegación |
-| 📊 Resultados | `pages/1_Resultados.py` | Benchmark de modelos, XGBoost base vs tuned, matriz de confusión, feature importance |
-| 🎤 Predicción | `pages/2_Prediccion.py` | Formulario de 8 campos, traza detallada del pipeline, resultado con probabilidades |
+| 📊 Resultados | `pages/1_Resultados.py` | Benchmark, XGBoost base vs tuned, confusión, feature importance, **SHAP global** |
+| 🎤 Predicción | `pages/2_Prediccion.py` | Formulario de 8 campos, traza del pipeline, resultado con probabilidades, **waterfall SHAP** |
 | 🤖 Análisis IA | `pages/3_Analisis_IA.py` | Explicación automática del resultado + chat de seguimiento |
 
 ### Flujo de uso
@@ -468,6 +499,32 @@ st.session_state["prediccion"] = {
 # Página 3 lo lee y genera la explicación una sola vez por predicción
 # (se detecta si cambió con id(resultado))
 ```
+
+---
+
+## Tests (`tests/`)
+
+Suite completa de tests unitarios. **100 tests, 100 passed** en ~5 segundos. Todos los tests son independientes del modelo serializado y los datos reales (gitignoreados): usan DataFrames en memoria y mocks de XGBClassifier.
+
+```bash
+pytest tests/          # ejecutar la suite completa
+pytest tests/ -v       # con detalle por test
+```
+
+### Cobertura
+
+| Fichero | Tests | Qué se prueba |
+|---------|-------|---------------|
+| `test_build_features.py` | 39 | Cada función `_features_*()`: columnas de salida, log1p, ratios, edge cases (setlist vacío, 0 vídeos, géneros vacíos) |
+| `test_predict.py` | 33 | `construir_features()`: los 31 campos, cálculos matemáticos, robustez ante ceros/negativos/valores extremos. `predecir()`: estructura del output, probabilidades suman 1.0, nivel = argmax |
+| `test_preprocess.py` | 20 | `_imputar()`: estrategias por grupo (NaN→0 en conteos, mediana en ratios, mediana-por-nivel en YouTube/gtrends). `cargar_datos()`: features excluidas por modo, escalado lineal, sin NaN tras imputación |
+| `test_shap_explainer.py` | 7 | Constantes `LABEL_MAP`, `shap_waterfall_fig()`: tipo de retorno `(Figure, str)`, clase válida, clase = argmax de probabilidades |
+
+### Fixtures (`tests/conftest.py`)
+
+- DataFrames mínimos en memoria para cada fuente de datos (Spotify, Last.fm, YouTube, setlist.fm, Tendencias)
+- `df_artist_features_minimal`: 20 artistas con NaN realistas (~40% en setlist.fm, ~20% en tendencias) para tests de preprocesado
+- `mock_model` + `mock_metadata`: XGBClassifier simulado con `predict_proba` → `[0.2, 0.6, 0.2]` (clase predicha: `medio`)
 
 ---
 
@@ -550,4 +607,19 @@ El 41% de artistas tiene `sl_num_conciertos=0` por ausencia de datos en setlist.
 
 ### Correcciones manuales de YouTube
 
-Varios artistas compartían canales o tenían canales incorrectos. Los suscriptores corregidos están en `youtube_artistas.csv` y **no deben modificarse automáticamente** — son valores validados manualmente.
+Varios artistas compartían canales o tenían canales incorrectos. Los suscriptores corregidos están en `youtube_artistas.csv`. El módulo `config/youtube_correcciones.py` documenta estos casos y sirve como audit trail:
+
+- `SIN_CANAL`: artistas sin canal de YouTube (Xico Palma, GREKKY) — sus features se imputan como 0.
+- `CORRECCIONES`: dict vacío que debe rellenarse con los ~10 artistas corregidos manualmente, indicando `channel_id`, `nombre_canal` y `motivo`. Una vez relleno, el colector `youtube.py` lo usa automáticamente en futuras re-ejecuciones sin consumir quota de la API.
+
+### Validación de la imputación de setlist.fm
+
+El script `scripts/validar_setlistfm.py` analiza si la imputación a 0 del 41% de NaN en `sl_num_conciertos` introduce un artefacto en el modelo. Ejecuta tres análisis:
+
+1. **Test chi-cuadrado** — ¿el NaN está correlacionado con el tier? Si sí, el 0 imputado puede actuar como señal proxy del nivel bajo.
+2. **Distribución real** — estadísticas de conciertos solo entre artistas con datos.
+3. **Comparativa CV5** — modelo completo vs. modelo sin features de setlist.fm.
+
+```bash
+python -m scripts.validar_setlistfm   # requiere data/processed/artist_features.csv
+```
