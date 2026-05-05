@@ -33,6 +33,12 @@ load_dotenv()
 BASE_URL = "https://www.googleapis.com/youtube/v3"
 API_KEY  = os.getenv("YOUTUBE_API_KEY")
 
+# Correcciones manuales y artistas sin canal — ver config/youtube_correcciones.py
+try:
+    from config.youtube_correcciones import CORRECCIONES, SIN_CANAL
+except ImportError:
+    CORRECCIONES, SIN_CANAL = {}, {}
+
 # Palabras en descripción/título que descalifican un canal como no-musical
 _KEYWORDS_EXCLUIR = {
     "minecraft", "bedwars", "skywars", "gaming", "gameplay", "pvp",
@@ -145,14 +151,29 @@ class YouTubeCollector:
         """
         Busca el canal oficial del artista en YouTube con dos estrategias:
 
-        1. Búsqueda filtrada por topicId de música (/m/04rlf) — filtra a canales
-           de música directamente desde la API.
-        2. Fallback genérico si la búsqueda musical no produce resultados
-           aceptables — aplica filtros de descripción y scoring mejorado.
+        1. Correcciones manuales (config/youtube_correcciones.py) — se consultan
+           antes de cualquier llamada a la API. Si el artista está en CORRECCIONES
+           o SIN_CANAL, se usa directamente sin consumir quota.
+        2. Búsqueda filtrada por topicId de música (/m/04rlf).
+        3. Fallback genérico si la búsqueda musical no produce resultados aceptables.
 
         Solo se consume la 2.ª búsqueda si la 1.ª falla o devuelve score bajo,
         minimizando el impacto en la quota diaria.
         """
+        # ── Correcciones manuales y artistas sin canal ────────────────────────
+        if nombre in SIN_CANAL:
+            print(f"  Sin canal (documentado): {SIN_CANAL[nombre]}")
+            return None
+
+        if nombre in CORRECCIONES:
+            corr = CORRECCIONES[nombre]
+            print(f"  Corrección manual aplicada: {corr['nombre_canal']} ({corr['channel_id']})")
+            return {
+                "channel_id":   corr["channel_id"],
+                "nombre_canal": corr["nombre_canal"],
+                "match_score":  corr.get("match_score", 1.0),
+            }
+
         candidatos = []
 
         # ── Estrategia 1: topicId música ──────────────────────────────────────
