@@ -101,7 +101,9 @@ st.divider()
 # ---------------------------------------------------------------------------
 st.subheader("4. Feature importance")
 
-tab_top10, tab_rf, tab_xgb = st.tabs(["Top 10 comparativa", "Random Forest (MDI)", "XGBoost (Gain)"])
+tab_top10, tab_rf, tab_xgb, tab_shap = st.tabs([
+    "Top 10 comparativa", "Random Forest (MDI)", "XGBoost (Gain)", "SHAP (Global)",
+])
 
 with tab_top10:
     st.image(str(FIGURES / "feature_importance_top10.png"), width='stretch')
@@ -121,3 +123,36 @@ with tab_rf:
 
 with tab_xgb:
     st.image(str(FIGURES / "feature_importance_xgb.png"), width='stretch')
+
+with tab_shap:
+    SHAP_BAR = FIGURES / "shap_summary_bar.png"
+    SHAP_BEE = FIGURES / "shap_beeswarm_alto.png"
+
+    if SHAP_BAR.exists() and SHAP_BEE.exists():
+        col_bar, col_bee = st.columns(2)
+        with col_bar:
+            st.image(str(SHAP_BAR), caption="Media |SHAP| global (todas las clases)", width='stretch')
+        with col_bee:
+            st.image(str(SHAP_BEE), caption="Beeswarm — Clase ALTO", width='stretch')
+
+        st.markdown("""
+**Cómo leer estos plots:**
+
+- **Bar plot (izquierda)**: importancia global de cada feature, medida como la media del
+  valor absoluto de sus SHAP values sobre todos los artistas y todas las clases.
+  A diferencia del MDI de Random Forest, SHAP es independiente de la estructura del árbol
+  y más consistente ante features correlacionadas.
+
+- **Beeswarm (derecha)**: cada punto es un artista. El eje X muestra cuánto empuja esa
+  feature la predicción hacia ALTO (valores positivos) o hacia las clases inferiores
+  (valores negativos). El color indica el valor real de la feature (rojo = alto, azul = bajo).
+
+> Para la explicación de una predicción individual, ve a **Predice un artista** — el waterfall
+> SHAP se genera automáticamente para cada artista analizado.
+""")
+    else:
+        st.info(
+            "Los plots SHAP aún no se han generado. Ejecuta el siguiente comando y recarga:\n\n"
+            "```\npython -m scripts.generar_shap\n```",
+            icon="ℹ️",
+        )

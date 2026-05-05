@@ -4,9 +4,11 @@ from pathlib import Path
 
 sys.path.insert(0, '.')
 
+import matplotlib.pyplot as plt
 import streamlit as st
 
 from src.models.predict import construir_features, predecir, _cargar_modelo
+from src.models.shap_explainer import shap_waterfall_fig
 from src.utils.log_streamlit import log, render_sidebar_log, reset_prediccion
 
 st.set_page_config(
@@ -176,6 +178,30 @@ if submitted:
             col_a.text(f"{k:<35} {v:.6g}")
         for k, v in items[mid:]:
             col_b.text(f"{k:<35} {v:.6g}")
+
+    # ------------------------------------------------------------------
+    # SHAP Waterfall — explicación individual de la predicción
+    # ------------------------------------------------------------------
+    st.divider()
+    st.subheader("🔍 ¿Por qué esta predicción? — Explicación SHAP")
+    st.caption(
+        "Cada barra muestra cuánto empuja cada feature la predicción hacia la clase predicha. "
+        "Rojo = empuja hacia arriba · Azul = empuja hacia abajo. "
+        "E[f(X)] es el valor base del modelo (predicción media sobre el dataset de entrenamiento)."
+    )
+    try:
+        with st.spinner("Calculando valores SHAP..."):
+            shap_fig, _ = shap_waterfall_fig(features)
+        st.pyplot(shap_fig, use_container_width=True)
+        plt.close(shap_fig)
+        log("Waterfall SHAP generado correctamente", "ML")
+    except FileNotFoundError:
+        st.info(
+            "El modelo serializado no está disponible. "
+            "Ejecuta `python -m src.models.train` para entrenarlo.",
+            icon="ℹ️",
+        )
+        log("Modelo no encontrado — SHAP no disponible", "WARN")
 
     st.divider()
     st.success("✅ Predicción guardada. Ve a **🤖 Analisis IA** para que el agente te explique el resultado.")
