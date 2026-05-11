@@ -63,16 +63,15 @@ class TestSHAPWaterfallFig:
 
         explainer = MagicMock()
         explainer.return_value = sv
-        explainer.model        = model   # model.predict_proba → [0.2, 0.6, 0.2]
 
-        return explainer, meta
+        return explainer, model, meta
 
     def test_retorna_figura_matplotlib(self, mock_model):
-        explainer, meta = self._build_mock_explainer(mock_model)
+        explainer, model, meta = self._build_mock_explainer(mock_model)
         features_dict = {feat: 0.0 for feat in meta["features"]}
 
         fig_fake = plt.figure()
-        with patch("src.models.shap_explainer._cargar_explainer", return_value=(explainer, meta)), \
+        with patch("src.models.shap_explainer._cargar_explainer", return_value=(explainer, model, meta)), \
              patch("shap.plots.waterfall"), \
              patch("matplotlib.pyplot.gcf", return_value=fig_fake), \
              patch("matplotlib.pyplot.title"), \
@@ -85,11 +84,11 @@ class TestSHAPWaterfallFig:
         plt.close("all")
 
     def test_retorna_clase_valida(self, mock_model):
-        explainer, meta = self._build_mock_explainer(mock_model)
+        explainer, model, meta = self._build_mock_explainer(mock_model)
         features_dict = {feat: 0.0 for feat in meta["features"]}
 
         fig_fake = plt.figure()
-        with patch("src.models.shap_explainer._cargar_explainer", return_value=(explainer, meta)), \
+        with patch("src.models.shap_explainer._cargar_explainer", return_value=(explainer, model, meta)), \
              patch("shap.plots.waterfall"), \
              patch("matplotlib.pyplot.gcf", return_value=fig_fake), \
              patch("matplotlib.pyplot.title"), \
@@ -103,11 +102,11 @@ class TestSHAPWaterfallFig:
 
     def test_clase_corresponde_al_argmax_de_proba(self, mock_model):
         """predict_proba devuelve [0.2, 0.6, 0.2] → debe predecir 'medio' (índice 1)."""
-        explainer, meta = self._build_mock_explainer(mock_model)
+        explainer, model, meta = self._build_mock_explainer(mock_model)
         features_dict = {feat: 0.0 for feat in meta["features"]}
 
         fig_fake = plt.figure()
-        with patch("src.models.shap_explainer._cargar_explainer", return_value=(explainer, meta)), \
+        with patch("src.models.shap_explainer._cargar_explainer", return_value=(explainer, model, meta)), \
              patch("shap.plots.waterfall"), \
              patch("matplotlib.pyplot.gcf", return_value=fig_fake), \
              patch("matplotlib.pyplot.title"), \
@@ -121,11 +120,11 @@ class TestSHAPWaterfallFig:
 
     def test_se_llama_a_shap_plots_waterfall(self, mock_model):
         """Verificar que se invoca shap.plots.waterfall (integración con librería SHAP)."""
-        explainer, meta = self._build_mock_explainer(mock_model)
+        explainer, model, meta = self._build_mock_explainer(mock_model)
         features_dict = {feat: 0.0 for feat in meta["features"]}
 
         fig_fake = plt.figure()
-        with patch("src.models.shap_explainer._cargar_explainer", return_value=(explainer, meta)), \
+        with patch("src.models.shap_explainer._cargar_explainer", return_value=(explainer, model, meta)), \
              patch("shap.plots.waterfall") as mock_waterfall, \
              patch("matplotlib.pyplot.gcf", return_value=fig_fake), \
              patch("matplotlib.pyplot.title"), \

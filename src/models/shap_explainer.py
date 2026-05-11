@@ -44,7 +44,9 @@ def _cargar_explainer():
     with open(MODELS_DIR / "metadata.json", encoding="utf-8") as f:
         meta = json.load(f)
     explainer = shap.TreeExplainer(model)
-    return explainer, meta
+    # model se devuelve por separado: explainer.model es un TreeEnsemble interno de SHAP
+    # y no expone predict_proba — necesitamos el XGBClassifier original
+    return explainer, model, meta
 
 
 def calcular_shap_global(
@@ -68,7 +70,7 @@ def calcular_shap_global(
     output_dir = output_dir or FIGURES_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    explainer, meta = _cargar_explainer()
+    explainer, _, meta = _cargar_explainer()
     features = meta["features"]
     X_model = X[features]
 
@@ -149,7 +151,7 @@ def shap_waterfall_fig(
         fig          : figura matplotlib lista para st.pyplot()
         clase_nombre : "bajo" | "medio" | "alto"
     """
-    explainer, meta = _cargar_explainer()
+    explainer, model, meta = _cargar_explainer()
     features = meta["features"]
 
     X = pd.DataFrame([features_dict])[features]
@@ -158,7 +160,7 @@ def shap_waterfall_fig(
         warnings.simplefilter("ignore")
         sv = explainer(X)  # Explanation: (1, n_features, n_classes)
 
-    proba      = explainer.model.predict_proba(X)[0]
+    proba      = model.predict_proba(X)[0]
     clase_idx  = int(proba.argmax())
     clase_nombre = LABEL_MAP[clase_idx]
 

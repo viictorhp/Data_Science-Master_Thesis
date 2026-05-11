@@ -124,6 +124,14 @@ def _imputar(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
 
+    # sl_tiene_datos: debe capturarse ANTES de rellenar NaN en sl_num_conciertos
+    # 1 = artista con perfil en setlist.fm (tenía datos reales), 0 = sin datos (NaN)
+    # Validado con scripts/validar_setlistfm.py: el NaN está correlacionado con el tier
+    # (79% de artistas "bajo" sin datos vs 5% de "alto"), por lo que hacer esta señal
+    # explícita es más honesto que dejar que el modelo la aprenda implícitamente del 0 imputado.
+    if "sl_num_conciertos" in df.columns:
+        df["sl_tiene_datos"] = df["sl_num_conciertos"].notna().astype(int)
+
     # Conteos de directo → 0
     for col in ["sl_num_conciertos", "sl_num_paises"]:
         if col in df.columns:
@@ -180,10 +188,10 @@ def cargar_datos(
     Parámetros
     ----------
     modo : 'arbol' | 'lineal'
-        'arbol'  → 26 features, sin escalar. Para Random Forest y XGBoost.
+        'arbol'  → 32 features, sin escalar. Para Random Forest y XGBoost.
                    Los árboles son invariantes al escalado y toleran features
                    correlacionadas (seleccionan la mejor en cada split).
-        'lineal' → 22 features (sin versiones raw), RobustScaler aplicado.
+        'lineal' → 24 features (sin versiones raw), RobustScaler aplicado.
                    Para Regresión Logística y SVM.
                    RobustScaler usa mediana e IQR en lugar de media y desviación
                    típica, por lo que es robusto ante los outliers extremos

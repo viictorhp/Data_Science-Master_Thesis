@@ -14,10 +14,10 @@ from unittest.mock import MagicMock
 
 
 # ---------------------------------------------------------------------------
-# Lista exacta de las 31 features del modelo (modo='arbol')
+# Lista exacta de las 32 features del modelo (modo='arbol')
 # Orden extraído de construir_features() en src/models/predict.py
 # ---------------------------------------------------------------------------
-FEATURES_31 = [
+FEATURES_32 = [
     "sp_num_albums", "sp_num_singles", "sp_anos_activo",
     "sp_releases_por_ano", "sp_ratio_albums_singles",
     "sp_avg_duration_ms", "sp_pct_explicit", "sp_pct_colabs",
@@ -29,6 +29,7 @@ FEATURES_31 = [
     "yt_num_videos", "yt_vistas_por_video", "yt_vistas_por_suscriptor",
     "sl_avg_canciones", "sl_pct_encore",
     "sl_num_paises", "sl_num_conciertos", "sl_pct_espana",
+    "sl_tiene_datos",
     "trend_gtrends_interes_medio", "trend_gtrends_log",
     "trend_yt_vistas_recientes", "trend_yt_vistas_recientes_log",
     "trend_yt_vistas_por_video_reciente",
@@ -36,8 +37,8 @@ FEATURES_31 = [
 
 
 @pytest.fixture
-def features_31():
-    return list(FEATURES_31)
+def features_32():
+    return list(FEATURES_32)
 
 
 # ---------------------------------------------------------------------------
@@ -200,10 +201,10 @@ def df_artist_features_minimal():
 def mock_metadata():
     """Copia exacta de la estructura de models/metadata.json."""
     return {
-        "features": list(FEATURES_31),
+        "features": list(FEATURES_32),
         "target_encoding": {"0": "bajo", "1": "medio", "2": "alto"},
         "n_samples":  157,
-        "n_features": 31,
+        "n_features": 32,
         "trained_at": "2025-01-01T00:00:00",
         "cv5_metrics": {
             "acc_mean": 0.675, "acc_std": 0.040,

@@ -1,7 +1,4 @@
-import json
 import sys
-from pathlib import Path
-
 sys.path.insert(0, '.')
 
 import matplotlib.pyplot as plt
@@ -10,6 +7,9 @@ import streamlit as st
 from src.models.predict import construir_features, predecir, _cargar_modelo
 from src.models.shap_explainer import shap_waterfall_fig
 from src.utils.log_streamlit import log, render_sidebar_log, reset_prediccion
+from src.utils.feature_labels import (
+    GRUPOS_DISPLAY, FEATURE_LABELS, format_valor, es_tecnica, detectar_alertas
+)
 
 st.set_page_config(
     page_title="Predice un artista · TFM",
@@ -51,13 +51,24 @@ with st.form("form_prediccion"):
         st.markdown("**▶️ YouTube**")
         yt_suscriptores   = st.number_input("Suscriptores",   min_value=0, value=0, step=100)
         yt_vistas_totales = st.number_input("Vistas totales", min_value=0, value=0, step=1000)
+        yt_num_videos     = st.number_input(
+            "Nº vídeos publicados",
+            min_value=0, value=0, step=1,
+            help="Permite calcular las vistas medias por vídeo. Déjalo en 0 si no lo sabes.",
+        )
 
     with col_sl:
         st.markdown("**🎪 Conciertos**")
+        sl_tiene_datos = st.checkbox(
+            "El artista aparece en setlist.fm",
+            value=False,
+            help="Marca si el artista tiene perfil en setlist.fm, aunque no se hayan encontrado conciertos. "
+                 "Se activa automáticamente si introduces un número de conciertos > 0.",
+        )
         sl_num_conciertos = st.number_input(
             "Nº conciertos documentados en setlist.fm",
             min_value=0, value=0, step=1,
-            help="Si el artista no aparece en setlist.fm, deja 0.",
+            help="Conciertos registrados. Si el artista no aparece en setlist.fm, deja 0 y desactiva el checkbox.",
         )
         info_conciertos = st.text_area(
             "Info adicional sobre directos (opcional)",
@@ -87,53 +98,44 @@ if submitted:
             "lfm_scrobbles":    int(lfm_scrobbles),
             "yt_suscriptores":  int(yt_suscriptores),
             "yt_vistas_totales":int(yt_vistas_totales),
+            "yt_num_videos":    int(yt_num_videos),
             "sl_num_conciertos":int(sl_num_conciertos),
+            "sl_tiene_datos":   1 if int(sl_num_conciertos) > 0 else int(sl_tiene_datos),
         }
         for k, v in inputs_raw.items():
-            st.write(f"  `{k}` = **{v:,}**")
+            label = FEATURE_LABELS.get(k, k)
+            st.write(f"  **{label}**: {v:,}")
         log(f"Inputs: {inputs_raw}", "DATA")
 
-        # 2. Construir las 31 features
-        st.write("**2 · Construyendo vector de 31 features**")
-        st.write("  Calculando ratios, logs y rellenando campos no pedidos con valores neutros...")
+        # 2. Construir las 32 features
+        st.write("**2 · Construyendo vector de 32 variables**")
+        st.write("  Calculando ratios, logaritmos y rellenando variables no pedidas con valores neutros...")
         features = construir_features(**inputs_raw)
         log("Vector de features construido correctamente", "OK")
-
-        calculadas = {
-            "sp_releases_por_ano":      features["sp_releases_por_ano"],
-            "sp_ratio_albums_singles":  features["sp_ratio_albums_singles"],
-            "lfm_oyentes_log":          features["lfm_oyentes_log"],
-            "lfm_scrobbles_log":        features["lfm_scrobbles_log"],
-            "lfm_scrobbles_por_oyente": features["lfm_scrobbles_por_oyente"],
-            "yt_suscriptores_log":      features["yt_suscriptores_log"],
-            "yt_vistas_log":            features["yt_vistas_log"],
-            "yt_vistas_por_suscriptor": features["yt_vistas_por_suscriptor"],
-        }
-        st.write("  Derivadas calculadas:")
-        for k, v in calculadas.items():
-            st.write(f"    `{k}` = {v:.4f}")
+        st.write(f"  Lanzamientos/año calculado: **{features['sp_releases_por_ano']:.1f}**")
+        st.write(f"  Fidelidad de fans (scrobbles/oyente): **{features['lfm_scrobbles_por_oyente']:.1f}**")
+        st.write(f"  Vistas por suscriptor (YouTube): **{features['yt_vistas_por_suscriptor']:.1f}**")
+        st.write(f"  Vistas medias por vídeo (YouTube): **{features['yt_vistas_por_video']:.0f}**")
         st.write(f"  Tendencias imputadas a 0 (no se piden al usuario).")
 
         # 3. Cargar modelo
         st.write("**3 · Cargando modelo**")
         model, meta = _cargar_modelo()
-        st.write(f"  Archivo: `models/xgb_tuned.joblib`")
-        st.write(f"  Entrenado: {meta['trained_at'][:19]}")
-        st.write(f"  Artistas de entrenamiento: {meta['n_samples']}")
-        st.write(f"  Features esperadas: {meta['n_features']}")
-        st.write(f"  Accuracy CV5: {meta['cv5_metrics']['acc_mean']:.1%} ± {meta['cv5_metrics']['acc_std']:.1%}")
+        st.write(f"  Entrenado con **{meta['n_samples']} artistas** y **{meta['n_features']} variables**")
+        st.write(f"  Fecha de entrenamiento: {meta['trained_at'][:10]}")
+        st.write(f"  Precisión (Accuracy CV5): {meta['cv5_metrics']['acc_mean']:.1%} ± {meta['cv5_metrics']['acc_std']:.1%}")
         st.write(f"  F1 macro CV5: {meta['cv5_metrics']['f1_mean']:.1%} ± {meta['cv5_metrics']['f1_std']:.1%}")
         log(f"Modelo cargado: {meta['n_samples']} artistas, {meta['n_features']} features", "ML")
 
         # 4. Ejecutar predicción
-        st.write("**4 · Ejecutando predict_proba**")
+        st.write("**4 · Ejecutando la predicción**")
         resultado = predecir(**inputs_raw)
         nivel = resultado["nivel"]
         proba = resultado["probabilidades"]
-        st.write(f"  Bajo  : {proba['bajo']:.4f}")
-        st.write(f"  Medio : {proba['medio']:.4f}")
-        st.write(f"  Alto  : {proba['alto']:.4f}")
-        st.write(f"  → Clase predicha: **{nivel.upper()}** (argmax)")
+        st.write(f"  Probabilidad BAJO  : {proba['bajo']:.1%}")
+        st.write(f"  Probabilidad MEDIO : {proba['medio']:.1%}")
+        st.write(f"  Probabilidad ALTO  : {proba['alto']:.1%}")
+        st.write(f"  → **Tier predicho: {nivel.upper()}**")
         log(f"Predicción: {nivel.upper()} | bajo={proba['bajo']:.3f} medio={proba['medio']:.3f} alto={proba['alto']:.3f}", "OK")
 
         status.update(label=f"✅ Predicción completada → {nivel.upper()}", state="complete")
@@ -169,25 +171,60 @@ if submitted:
     st.progress(proba["medio"], text=f"Medio  {proba['medio']:.1%}")
     st.progress(proba["alto"],  text=f"Alto   {proba['alto']:.1%}")
 
-    # Expander con el vector completo de 31 features
-    with st.expander("🔬 Ver vector completo de features enviado al modelo (31 features)"):
-        col_a, col_b = st.columns(2)
-        items = list(features.items())
-        mid   = len(items) // 2
-        for k, v in items[:mid]:
-            col_a.text(f"{k:<35} {v:.6g}")
-        for k, v in items[mid:]:
-            col_b.text(f"{k:<35} {v:.6g}")
+    # -------------------------------------------------------------------------
+    # Alertas e inconsistencias
+    # -------------------------------------------------------------------------
+    alertas = detectar_alertas(features, nivel, proba)
+    if alertas:
+        st.divider()
+        st.markdown("#### ⚡ Avisos del modelo")
+        for alerta in alertas:
+            if alerta["tipo"] == "warning":
+                st.warning(alerta["msg"])
+            else:
+                st.info(alerta["msg"])
 
-    # ------------------------------------------------------------------
-    # SHAP Waterfall — explicación individual de la predicción
-    # ------------------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # Detalle de variables por fuente — nombres amigables
+    # -------------------------------------------------------------------------
+    st.divider()
+    with st.expander("📊 Ver todas las variables enviadas al modelo (32 variables)"):
+        st.caption(
+            "Cada sección muestra las variables de una fuente de datos. "
+            "Las marcadas como *(calculado)* o *(interno)* son transformaciones matemáticas "
+            "que el modelo usa internamente — no las introduces tú directamente."
+        )
+        for nombre_grupo, keys in GRUPOS_DISPLAY:
+            st.markdown(f"**{nombre_grupo}**")
+            rows_main, rows_tech = [], []
+            for key in keys:
+                if key not in features:
+                    continue
+                label = FEATURE_LABELS.get(key, key)
+                valor = format_valor(key, features[key])
+                (rows_tech if es_tecnica(key) else rows_main).append(
+                    {"Variable": label, "Valor": valor}
+                )
+            if rows_main:
+                import pandas as pd
+                df_main = pd.DataFrame(rows_main)
+                st.dataframe(df_main, hide_index=True, use_container_width=True)
+            if rows_tech:
+                with st.expander(f"Variables internas del modelo ({len(rows_tech)})", expanded=False):
+                    df_tech = pd.DataFrame(rows_tech)
+                    st.dataframe(df_tech, hide_index=True, use_container_width=True)
+            st.markdown("")
+
+    # -------------------------------------------------------------------------
+    # SHAP Waterfall
+    # -------------------------------------------------------------------------
     st.divider()
     st.subheader("🔍 ¿Por qué esta predicción? — Explicación SHAP")
     st.caption(
-        "Cada barra muestra cuánto empuja cada feature la predicción hacia la clase predicha. "
-        "Rojo = empuja hacia arriba · Azul = empuja hacia abajo. "
-        "E[f(X)] es el valor base del modelo (predicción media sobre el dataset de entrenamiento)."
+        "Cada barra muestra cuánto empuja cada variable la predicción hacia el tier predicho. "
+        "**Rojo** = empuja hacia arriba (favorece ese tier) · "
+        "**Azul** = empuja hacia abajo · "
+        "E[f(X)] = predicción media del modelo sobre todos los artistas del dataset."
     )
     try:
         with st.spinner("Calculando valores SHAP..."):

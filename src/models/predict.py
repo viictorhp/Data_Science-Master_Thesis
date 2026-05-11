@@ -56,18 +56,20 @@ def construir_features(
     lfm_scrobbles: int = 0,
     yt_suscriptores: int = 0,
     yt_vistas_totales: int = 0,
+    yt_num_videos: int = 0,
     sl_num_conciertos: int = 0,
+    sl_tiene_datos: int = 0,
 ) -> dict:
     """
-    Construye el vector completo de 31 features a partir de los inputs del usuario.
+    Construye el vector completo de 32 features a partir de los inputs del usuario.
     Todos los campos derivados (logs, ratios) se calculan aquí.
     Las features no pedidas al usuario se imputan con valores neutros.
     """
     anos = max(sp_anos_activo, 0.5)
     total_releases = sp_num_albums + sp_num_singles
+    # Si hay conciertos documentados, el artista sí aparece en setlist.fm
+    sl_tiene_datos_final = 1 if sl_num_conciertos > 0 else int(sl_tiene_datos)
 
-    # YouTube: si no hay suscriptores ni vistas, yt_vistas_por_video = 0
-    yt_num_videos = _DEFAULTS["yt_num_videos"]
     yt_vistas_por_video = (
         yt_vistas_totales / yt_num_videos if yt_num_videos > 0 else 0.0
     )
@@ -103,6 +105,7 @@ def construir_features(
         "sl_num_paises":            float(min(sl_num_conciertos, 1)),
         "sl_num_conciertos":        float(sl_num_conciertos),
         "sl_pct_espana":            100.0 if sl_num_conciertos > 0 else 0.0,
+        "sl_tiene_datos":           float(sl_tiene_datos_final),
         # --- Tendencias (no se piden, se imputan a 0) ---
         "trend_gtrends_interes_medio":        0.0,
         "trend_gtrends_log":                  0.0,
@@ -120,7 +123,9 @@ def predecir(
     lfm_scrobbles: int = 0,
     yt_suscriptores: int = 0,
     yt_vistas_totales: int = 0,
+    yt_num_videos: int = 0,
     sl_num_conciertos: int = 0,
+    sl_tiene_datos: int = 0,
 ) -> dict:
     """
     Predice el tier de sala de un artista de rap/urbano español.
@@ -134,14 +139,16 @@ def predecir(
     lfm_scrobbles       : Reproducciones totales acumuladas en Last.fm
     yt_suscriptores     : Suscriptores del canal de YouTube
     yt_vistas_totales   : Vistas totales acumuladas en YouTube
+    yt_num_videos       : Nº de vídeos publicados en el canal de YouTube
     sl_num_conciertos   : Nº de conciertos documentados en setlist.fm
+    sl_tiene_datos      : 1 si el artista aparece en setlist.fm, 0 si no
 
     Retorna
     -------
     dict con:
         nivel           : "bajo" | "medio" | "alto"
         probabilidades  : {"bajo": float, "medio": float, "alto": float}
-        features        : vector completo de 31 features enviado al modelo
+        features        : vector completo de 32 features enviado al modelo
     """
     model, meta = _cargar_modelo()
 
@@ -153,7 +160,9 @@ def predecir(
         lfm_scrobbles=lfm_scrobbles,
         yt_suscriptores=yt_suscriptores,
         yt_vistas_totales=yt_vistas_totales,
+        yt_num_videos=yt_num_videos,
         sl_num_conciertos=sl_num_conciertos,
+        sl_tiene_datos=sl_tiene_datos,
     )
 
     # Construir DataFrame respetando el orden exacto que espera el modelo

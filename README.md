@@ -29,6 +29,7 @@ src/
     explicador.py    # Agente LangChain: explicación inicial + chat de seguimiento
   utils/
     log_streamlit.py # Logging de sesión y sidebar persistente
+    feature_labels.py# Nombres amigables, agrupación, formateo y detección de alertas
 config/
   youtube_correcciones.py  # Audit trail de canales YouTube corregidos manualmente
 scripts/
@@ -93,15 +94,15 @@ Señales de presencia digital, actividad musical y trayectoria recogidas de 6 fu
 | **Spotify** (top tracks) | 3 | Estilo: duración de tracks, % explicit, % colaboraciones |
 | **Last.fm** | 6 | Audiencia histórica: oyentes únicos, scrobbles totales, engagement de fans |
 | **YouTube** | 7 | Presencia digital: suscriptores, vistas, engagement del canal |
-| **setlist.fm** | 5 | Actividad en directo: conciertos, países, % en España |
+| **setlist.fm** | 6 | Actividad en directo: conciertos, países, % en España, flag de presencia |
 | **Tendencias** (Google Trends + YT reciente) | 5 | Buzz actual: interés de búsqueda y vistas recientes |
 
 **Total tras preprocesado** (`src/features/preprocess.py`):
 
 | Modo | Features | Escalado | Modelos |
 |------|----------|----------|---------|
-| `arbol` | **31** | Sin escalar | Random Forest, XGBoost, LightGBM |
-| `lineal` | **23** | RobustScaler | Regresión Logística, SVM, Regresión Ordinal |
+| `arbol` | **32** | Sin escalar | Random Forest, XGBoost, LightGBM |
+| `lineal` | **24** | RobustScaler | Regresión Logística, SVM, Regresión Ordinal |
 
 En modo `lineal` se eliminan adicionalmente las versiones raw cuando existe versión log (`lfm_oyentes`, `lfm_scrobbles`, `yt_suscriptores`, `yt_vistas_totales`, `trend_yt_vistas_recientes`, `trend_gtrends_interes_medio`), `sp_pct_colabs` (r≈−0.02, solo añade ruido), y `trend_yt_vistas_por_video_reciente` (r=0.996 con `trend_yt_vistas_recientes_log` — multicolinealidad casi perfecta).
 
@@ -250,6 +251,7 @@ Combina todas las fuentes raw en la matriz `data/processed/artist_features.csv`.
 | `sl_pct_encore` | % de conciertos con encore |
 | `sl_num_paises` | Países distintos donde ha actuado |
 | `sl_pct_espana` | % de conciertos en España |
+| `sl_tiene_datos` | **Flag binario**: 1 si el artista aparece en setlist.fm, 0 si no |
 
 #### Tendencias (Google Trends + YouTube reciente)
 | Feature | Descripción |
@@ -265,6 +267,7 @@ Combina todas las fuentes raw en la matriz `data/processed/artist_features.csv`.
 
 | Columnas | NaN aprox. | Causa | Imputación |
 |----------|------------|-------|------------|
+| `sl_tiene_datos` | — | Flag creado antes de imputar | **1** si `sl_num_conciertos` no era NaN, **0** si lo era |
 | `sl_num_conciertos`, `sl_num_paises` | 41% | Sin registros en setlist.fm | **0** (sin conciertos = 0 conciertos) |
 | `sl_avg_canciones`, `sl_pct_encore`, `sl_pct_espana` | 41% | Sin registros en setlist.fm | **Mediana global** (0 implicaría setlist vacío) |
 | `yt_vistas_totales`, `yt_vistas_log`, `yt_num_videos`, `yt_vistas_por_*` | ~5% | Canales corregidos sin datos de vistas | **Mediana por nivel** |
@@ -383,7 +386,7 @@ Entrena el modelo tuned sobre todos los datos y lo serializa en `models/`.
 python -m src.models.train
 ```
 
-**Salida** (27 abril 2026, `acc=0.675 ± 0.040 | f1_macro=0.669 ± 0.037`):
+**Salida** (11 mayo 2026, `acc=0.681 ± 0.044 | f1_macro=0.675 ± 0.041`):
 
 - `models/xgb_tuned.joblib` — modelo listo para inferencia
 - `models/metadata.json` — 31 features esperadas, codificación del target, parámetros y métricas CV
@@ -407,6 +410,7 @@ resultado = predecir(
     lfm_oyentes=9_000, lfm_scrobbles=300_000,
     yt_suscriptores=6_000, yt_vistas_totales=800_000,
     sl_num_conciertos=0,
+    sl_tiene_datos=0,   # 0 = sin perfil en setlist.fm
 )
 # → {"nivel": "bajo", "probabilidades": {"bajo": 0.893, "medio": 0.069, "alto": 0.038}, "features": {...}}
 ```
@@ -421,11 +425,11 @@ resultado = predecir(
 | Scrobbles Last.fm | `lfm_scrobbles`, `lfm_scrobbles_log`, `lfm_scrobbles_por_oyente` |
 | Suscriptores YouTube | `yt_suscriptores`, `yt_suscriptores_log` |
 | Vistas totales YouTube | `yt_vistas_totales`, `yt_vistas_log`, `yt_vistas_por_suscriptor` |
-| Nº conciertos | `sl_num_conciertos`, `sl_num_paises`, `sl_pct_espana` |
+| Nº conciertos + aparece en setlist.fm | `sl_num_conciertos`, `sl_num_paises`, `sl_pct_espana`, `sl_tiene_datos` |
 
 **Campos calculados automáticamente:** `sp_releases_por_ano`, `sp_ratio_albums_singles`, ratios y logs derivados.
 
-**Campos imputados con valores neutros:** `sp_avg_duration_ms` (210.000 ms), `sp_pct_explicit` (0.6), `sp_pct_colabs` (0.3), tendencias → 0.
+**Campos imputados con valores neutros:** `sp_avg_duration_ms` (210.000 ms), `sp_pct_explicit` (0.6), `sp_pct_colabs` (0.3), tendencias → 0, `sl_tiene_datos` → 0 si no se indica (sobrescrito automáticamente a 1 si `sl_num_conciertos > 0`).
 
 El campo de texto libre "info del artista" (salas, ciudades, etc.) no entra en el modelo — lo usa el agente LangChain para contextualizar la explicación.
 
@@ -473,8 +477,8 @@ GROQ_API_KEY=tu_clave_groq        # para el agente IA (página 3)
 |--------|---------|-------------|
 | 🏠 Landing | `app.py` | Métricas del proyecto, descripción del tier system, navegación |
 | 📊 Resultados | `pages/1_Resultados.py` | Benchmark, XGBoost base vs tuned, confusión, feature importance, **SHAP global** |
-| 🎤 Predicción | `pages/2_Prediccion.py` | Formulario de 8 campos, traza del pipeline, resultado con probabilidades, **waterfall SHAP** |
-| 🤖 Análisis IA | `pages/3_Analisis_IA.py` | Explicación automática del resultado + chat de seguimiento |
+| 🎤 Predicción | `pages/2_Prediccion.py` | Formulario de 9 campos, traza del pipeline, resultado con probabilidades, **alertas de inconsistencias**, variables con nombres amigables agrupadas por fuente, **waterfall SHAP** |
+| 🤖 Análisis IA | `pages/3_Analisis_IA.py` | Explicación estructurada en 3 secciones + chat de seguimiento con historial |
 
 ### Flujo de uso
 
@@ -484,7 +488,29 @@ GROQ_API_KEY=tu_clave_groq        # para el agente IA (página 3)
 
 ### Traza en tiempo real
 
-Cada operación muestra un panel `st.status()` expandido con todos los pasos: inputs recibidos → features calculadas → modelo cargado → probabilidades → respuesta del LLM. El log de sesión (barra lateral) acumula todos los eventos con timestamp e icono de nivel (`ℹ️ OK ✅ API 🌐 ML 🤖 DATA 📊`).
+Cada operación muestra un panel `st.status()` expandido con todos los pasos: inputs recibidos → features calculadas → modelo cargado → probabilidades → respuesta del LLM. Los inputs se muestran con nombres legibles (no técnicos). El log de sesión (barra lateral) acumula todos los eventos con timestamp e icono de nivel (`ℹ️ OK ✅ API 🌐 ML 🤖 DATA 📊`).
+
+### Alertas e inconsistencias (`src/utils/feature_labels.py`)
+
+Tras cada predicción, el dashboard detecta y muestra automáticamente avisos cuando:
+
+- **Baja confianza** (<45%): el modelo duda entre dos tiers — se informa del segundo más probable
+- **Presencia digital superior al tier predicho**: métricas de Last.fm o YouTube en rango MEDIO/ALTO pero tier predicho BAJO (generalmente causado por ausencia de datos de conciertos)
+- **Sin conciertos documentados + alta presencia digital**: los conciertos son la feature más determinante del modelo; se sugiere añadir datos de setlist.fm
+- **`yt_num_videos` no informado con vistas altas**: la métrica "vistas por vídeo" queda a 0, enmascarando la relevancia real del canal
+- **Ritmo de lanzamientos anómalo** (>20/año): puede indicar datos inconsistentes
+
+El mismo módulo centraliza los nombres amigables de las 32 features y su agrupación por fuente (Spotify / Last.fm / YouTube / Conciertos / Tendencias) para el expander de variables.
+
+### Agente IA (`src/agents/explicador.py`)
+
+El system prompt incluye:
+- Tabla de valores típicos por tier (rangos de oyentes, vistas, conciertos) extraída del dataset
+- Artistas de referencia por tier (Tarchi · BEJO/La Zowi · Bad Gyal/Quevedo/Yung Beef)
+- Interpretación del ratio scrobbles/oyente como indicador de fidelidad del fan
+- Detección automática de casos frontera (confianza < 55%)
+
+La explicación inicial fuerza **3 secciones fijas**: ¿por qué ese tier? · confianza de la predicción · qué necesita mejorar. El chat de seguimiento usa temperatura 0.4 (más conversacional).
 
 ### Compartir datos entre páginas
 
@@ -504,7 +530,7 @@ st.session_state["prediccion"] = {
 
 ## Tests (`tests/`)
 
-Suite completa de tests unitarios. **100 tests, 100 passed** en ~5 segundos. Todos los tests son independientes del modelo serializado y los datos reales (gitignoreados): usan DataFrames en memoria y mocks de XGBClassifier.
+Suite completa de tests unitarios. **100 tests, 100 passed** en ~10 segundos. Todos los tests son independientes del modelo serializado y los datos reales (gitignoreados): usan DataFrames en memoria y mocks de XGBClassifier.
 
 ```bash
 pytest tests/          # ejecutar la suite completa
@@ -516,7 +542,7 @@ pytest tests/ -v       # con detalle por test
 | Fichero | Tests | Qué se prueba |
 |---------|-------|---------------|
 | `test_build_features.py` | 39 | Cada función `_features_*()`: columnas de salida, log1p, ratios, edge cases (setlist vacío, 0 vídeos, géneros vacíos) |
-| `test_predict.py` | 33 | `construir_features()`: los 31 campos, cálculos matemáticos, robustez ante ceros/negativos/valores extremos. `predecir()`: estructura del output, probabilidades suman 1.0, nivel = argmax |
+| `test_predict.py` | 33 | `construir_features()`: los 32 campos, cálculos matemáticos, robustez ante ceros/negativos/valores extremos. `predecir()`: estructura del output, probabilidades suman 1.0, nivel = argmax |
 | `test_preprocess.py` | 20 | `_imputar()`: estrategias por grupo (NaN→0 en conteos, mediana en ratios, mediana-por-nivel en YouTube/gtrends). `cargar_datos()`: features excluidas por modo, escalado lineal, sin NaN tras imputación |
 | `test_shap_explainer.py` | 7 | Constantes `LABEL_MAP`, `shap_waterfall_fig()`: tipo de retorno `(Figure, str)`, clase válida, clase = argmax de probabilidades |
 
@@ -601,9 +627,13 @@ Spotify bloqueó estos endpoints en noviembre 2024, incluso con OAuth. `populari
 
 Los scripts usan **fuzzy matching** (`difflib.SequenceMatcher`) con umbral 60%. Artistas con nombres cortos o genéricos son propensos a falsos positivos y se revisaron manualmente.
 
-### Imputación de setlist.fm
+### Imputación de setlist.fm — artefacto detectado y corregido
 
-El 41% de artistas tiene `sl_num_conciertos=0` por ausencia de datos en setlist.fm (no necesariamente porque no hayan actuado). Esta imputación puede inflar artificialmente la importancia de esta feature — es la principal limitación conocida del modelo actual.
+El 41% de artistas no aparece en setlist.fm. El script `scripts/validar_setlistfm.py` confirmó que este NaN **no es aleatorio**: el 79% de artistas "bajo" no tiene datos en setlist.fm frente al solo 5.3% de artistas "alto" (test chi-cuadrado: χ²=63.3, p≈0.000). Al imputar NaN→0, el modelo aprendía implícitamente que `sl_num_conciertos=0` es señal de nivel bajo — un artefacto.
+
+Al mismo tiempo, las features de setlist.fm tienen señal real: el modelo pierde **+6.4 puntos de F1 macro** sin ellas (0.669 → 0.605), por lo que eliminarlas tampoco es la solución.
+
+**Corrección aplicada**: se añadió `sl_tiene_datos` (0/1), un flag binario creado en `preprocess.py` antes de cualquier imputación, que hace explícita la distinción entre "sin perfil en setlist.fm" y "0 conciertos documentados". El modelo puede ahora aprender la correlación de forma honesta en lugar de inferirla de un valor imputado.
 
 ### Correcciones manuales de YouTube
 
@@ -623,3 +653,16 @@ El script `scripts/validar_setlistfm.py` analiza si la imputación a 0 del 41% d
 ```bash
 python -m scripts.validar_setlistfm   # requiere data/processed/artist_features.csv
 ```
+
+**Resultados sobre el dataset de 157 artistas:**
+
+| Tier | Sin datos en setlist.fm | Total |
+|------|------------------------|-------|
+| Bajo | 79.0% (49/62) | — |
+| Medio | 24.6% (14/57) | — |
+| Alto | 5.3% (2/38) | — |
+
+χ²=63.3, df=2, **p≈0.000** → el NaN está fuertemente correlacionado con el tier.
+Δ F1 macro sin setlist.fm: **−6.4 puntos** (0.669→0.605) → las features tienen señal real.
+
+**Conclusión y acción tomada**: se añadió la feature `sl_tiene_datos` (flag binario 0/1) creada antes de la imputación, lo que permite al modelo aprender la correlación de forma explícita y honesta. Ver sección *Imputación de setlist.fm* en Problemas conocidos.

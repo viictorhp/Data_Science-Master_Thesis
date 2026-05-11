@@ -15,7 +15,7 @@ from unittest.mock import patch
 from src.models.predict import construir_features, predecir, LABEL_MAP
 
 NIVELES_VALIDOS   = {"bajo", "medio", "alto"}
-N_FEATURES_MODELO = 31
+N_FEATURES_MODELO = 32
 
 
 # ===========================================================================
@@ -30,9 +30,9 @@ class TestConstruirFeatures:
         f = construir_features()
         assert len(f) == N_FEATURES_MODELO
 
-    def test_contiene_todas_las_features_esperadas(self, features_31):
+    def test_contiene_todas_las_features_esperadas(self, features_32):
         f = construir_features()
-        for feat in features_31:
+        for feat in features_32:
             assert feat in f, f"Feature ausente: {feat}"
 
     def test_sin_valores_nulos_con_defaults(self):
@@ -91,6 +91,16 @@ class TestConstruirFeatures:
         # Con 0 oyentes debe usar max(oyentes, 1) para evitar división por cero
         f = construir_features(lfm_oyentes=0, lfm_scrobbles=0)
         assert not np.isnan(f["lfm_scrobbles_por_oyente"])
+
+    # --- YouTube: vistas por vídeo ---
+
+    def test_vistas_por_video_con_num_videos(self):
+        f = construir_features(yt_vistas_totales=1_000_000, yt_num_videos=100)
+        assert abs(f["yt_vistas_por_video"] - 10_000.0) < 1e-6
+
+    def test_vistas_por_video_sin_num_videos_es_cero(self):
+        f = construir_features(yt_vistas_totales=5_000_000, yt_num_videos=0)
+        assert f["yt_vistas_por_video"] == 0.0
 
     # --- Features de setlist.fm ---
 
@@ -207,11 +217,11 @@ class TestPredecir:
             result = predecir()
         assert result["nivel"] == "medio"
 
-    def test_features_contiene_todas_las_claves(self, mock_model, features_31):
+    def test_features_contiene_todas_las_claves(self, mock_model, features_32):
         model, meta = mock_model
         with patch("src.models.predict._cargar_modelo", return_value=(model, meta)):
             result = predecir()
-        for feat in features_31:
+        for feat in features_32:
             assert feat in result["features"], f"Feature ausente en output: {feat}"
 
     def test_features_output_es_31(self, mock_model):
