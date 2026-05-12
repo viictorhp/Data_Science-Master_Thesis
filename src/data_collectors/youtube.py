@@ -8,18 +8,21 @@ Aporta señales de presencia digital que no están en ninguna otra fuente:
   - fecha_creacion:  antigüedad del canal (proxy de trayectoria)
   - pais_canal:      país del canal cuando está disponible
 
-QUOTA: La API tiene 10.000 unidades/día. Cada artista consume ~100 unidades
-(búsqueda) + 1 (estadísticas). Con 125 artistas son ~12.625 unidades.
-El procesado incremental omite artistas ya guardados automáticamente.
+QUOTA: La API tiene 10.000 unidades/día.
+  - Búsqueda (usada solo en 00_resolver_identidades.py): ~100 unidades/artista
+  - Estadísticas de canal conocido (main de este script): 1 unidad/artista
+
+El main usa channel_id del registry directamente — no hace búsquedas.
+buscar_canal() solo lo invoca el resolver para nuevos artistas.
 
 Uso:
-  python -m src.data_collectors.youtube                  # todos los pendientes
-  python -m src.data_collectors.youtube --batch-size 90  # solo 90 artistas
+  python -m src.data_collectors.youtube
+  python -m src.data_collectors.youtube --batch-size 90
   python -m src.data_collectors.youtube --force Dano BEJO Choclock
-      → borra esas filas del CSV y las re-procesa
 """
 
 import os
+import sys
 import time
 import difflib
 import argparse
@@ -30,14 +33,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+ROOT     = Path(__file__).parent.parent.parent
 BASE_URL = "https://www.googleapis.com/youtube/v3"
 API_KEY  = os.getenv("YOUTUBE_API_KEY")
 
-# Correcciones manuales y artistas sin canal — ver config/youtube_correcciones.py
-try:
-    from config.youtube_correcciones import CORRECCIONES, SIN_CANAL
-except ImportError:
-    CORRECCIONES, SIN_CANAL = {}, {}
+sys.path.insert(0, str(ROOT))
 
 # Palabras en descripción/título que descalifican un canal como no-musical
 _KEYWORDS_EXCLUIR = {
@@ -150,30 +150,13 @@ class YouTubeCollector:
     def buscar_canal(self, nombre: str, umbral: float = 0.55) -> dict | None:
         """
         Busca el canal oficial del artista en YouTube con dos estrategias:
+        1. Búsqueda filtrada por topicId de música (/m/04rlf).
+        2. Fallback genérico si la búsqueda musical no produce resultados aceptables.
 
-        1. Correcciones manuales (config/youtube_correcciones.py) — se consultan
-           antes de cualquier llamada a la API. Si el artista está en CORRECCIONES
-           o SIN_CANAL, se usa directamente sin consumir quota.
-        2. Búsqueda filtrada por topicId de música (/m/04rlf).
-        3. Fallback genérico si la búsqueda musical no produce resultados aceptables.
-
-        Solo se consume la 2.ª búsqueda si la 1.ª falla o devuelve score bajo,
-        minimizando el impacto en la quota diaria.
+        Usado por scripts/00_resolver_identidades.py para nuevos artistas.
+        Las correcciones manuales se gestionan en el registry (manual_override=True)
+        y no necesitan pasar por este método.
         """
-        # ── Correcciones manuales y artistas sin canal ────────────────────────
-        if nombre in SIN_CANAL:
-            print(f"  Sin canal (documentado): {SIN_CANAL[nombre]}")
-            return None
-
-        if nombre in CORRECCIONES:
-            corr = CORRECCIONES[nombre]
-            print(f"  Corrección manual aplicada: {corr['nombre_canal']} ({corr['channel_id']})")
-            return {
-                "channel_id":   corr["channel_id"],
-                "nombre_canal": corr["nombre_canal"],
-                "match_score":  corr.get("match_score", 1.0),
-            }
-
         candidatos = []
 
         # ── Estrategia 1: topicId música ──────────────────────────────────────
@@ -266,133 +249,89 @@ class YouTubeCollector:
             "_muy_pequeno":      self._es_muy_pequeno(subs, vistas),
         }
 
-    # ── Procesado de lista ────────────────────────────────────────────────────
-
-    def procesar_lista(self, lista_artistas: list, procesados: set) -> list:
-        nuevas_filas   = []
-        no_encontrados = []
-        sospechosos    = []
-        total = len(lista_artistas)
-
-        print(f"\nProcesando {total} artistas...\n")
-
-        for i, nombre in enumerate(lista_artistas, 1):
-            prefijo = f"[{i}/{total}]"
-
-            if nombre.lower() in procesados:
-                print(f"{prefijo} Omitido (ya existe): {nombre}")
-                continue
-
-            print(f"{prefijo} Buscando: {nombre} ...", end=" ", flush=True)
-
-            try:
-                canal = self.buscar_canal(nombre)
-            except RuntimeError as e:
-                print(f"\n{e}")
-                print(f"  Guardando progreso ({len(nuevas_filas)} artistas)...")
-                break
-
-            if not canal:
-                print("no encontrado")
-                no_encontrados.append(nombre)
-                nuevas_filas.append({"nombre_buscado": nombre})
-                time.sleep(self.delay)
-                continue
-
-            stats = self.obtener_stats(canal["channel_id"])
-            muy_pequeno = stats.pop("_muy_pequeno", False)
-
-            fila = {
-                "nombre_buscado": nombre,
-                "nombre_canal":   canal["nombre_canal"],
-                "channel_id":     canal["channel_id"],
-                "match_score":    canal["match_score"],
-                **stats,
-            }
-            nuevas_filas.append(fila)
-
-            subs = f"{stats.get('suscriptores'):,}" if stats.get("suscriptores") else "ocultos"
-            aviso = " ⚠ MUY PEQUEÑO" if muy_pequeno else ""
-            print(
-                f"✓ {canal['nombre_canal']} | "
-                f"subs={subs} | score={canal['match_score']:.0%}"
-                f"{aviso}"
-            )
-            if muy_pequeno:
-                sospechosos.append(nombre)
-
-            time.sleep(self.delay)
-
-        print(f"\n✓ Procesados: {len(nuevas_filas)}")
-        if no_encontrados:
-            print(f"  No encontrados ({len(no_encontrados)}): {', '.join(no_encontrados)}")
-        if sospechosos:
-            print(f"  ⚠  Canal muy pequeño — revisar manualmente: {', '.join(sospechosos)}")
-
-        return nuevas_filas
-
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="Recoge datos de YouTube Data API v3")
-    parser.add_argument("--artists",    default="artistas.txt",
-                        help="Fichero con un artista por línea")
-    parser.add_argument("--output",     default="data/raw/youtube_artistas.csv",
-                        help="CSV de salida")
+    """
+    Recolecta estadísticas de YouTube usando channel_id del registry.
+    No realiza búsquedas (buscar_canal solo lo usa 00_resolver_identidades.py).
+    Quota consumida: ~1 unidad/artista (solo channels.list con ID conocido).
+    """
+    parser = argparse.ArgumentParser(description="Recoge estadísticas de YouTube usando IDs del registry")
     parser.add_argument("--batch-size", type=int, default=0,
                         help="Artistas a procesar por ejecución (0=todos)")
-    parser.add_argument("--delay",      type=float, default=0.5,
-                        help="Segundos entre llamadas a la API")
+    parser.add_argument("--delay",      type=float, default=0.5)
     parser.add_argument("--force",      nargs="+", metavar="ARTISTA",
                         help="Re-procesar estos artistas aunque ya existan en el CSV")
     args = parser.parse_args()
 
-    if not os.path.exists(args.artists):
-        print(f"No se encuentra: {args.artists}")
-        return
+    from config.registry import cargar as cargar_registry
+    df_reg = cargar_registry()
+    # Solo artistas con channel_id resuelto
+    df_con_canal = df_reg[df_reg["yt_channel_id"].notna()][["nombre_canonico", "yt_channel_id"]].copy()
+    df_sin_canal = df_reg[df_reg["yt_channel_id"].isna()]["nombre_canonico"].tolist()
 
-    with open(args.artists, encoding="utf-8") as f:
-        artistas = [l.strip() for l in f if l.strip()]
-    print(f"{len(artistas)} artistas en {args.artists}")
-
-    out_path = Path(args.output)
+    out_path = ROOT / "data" / "raw" / "youtube_artistas.csv"
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     df_existe = pd.read_csv(out_path) if out_path.exists() else pd.DataFrame()
 
-    # ── Borrar filas de artistas forzados ────────────────────────────────────
     if args.force and not df_existe.empty:
         force_lower = {a.lower() for a in args.force}
-        mask = df_existe["nombre_buscado"].str.lower().isin(force_lower)
-        borrados = df_existe[mask]["nombre_buscado"].tolist()
-        df_existe = df_existe[~mask].reset_index(drop=True)
-        if borrados:
-            df_existe.to_csv(out_path, index=False, encoding="utf-8")
-            print(f"Re-procesando: {borrados}")
+        df_existe = df_existe[~df_existe["nombre_buscado"].str.lower().isin(force_lower)].reset_index(drop=True)
+        df_existe.to_csv(out_path, index=False, encoding="utf-8")
+        print(f"Re-procesando: {args.force}")
 
-    procesados = (
-        set(df_existe["nombre_buscado"].str.lower())
-        if not df_existe.empty else set()
-    )
-    pendientes = [a for a in artistas if a.lower() not in procesados]
+    procesados = set(df_existe["nombre_buscado"].str.lower()) if not df_existe.empty else set()
+    pendientes_df = df_con_canal[~df_con_canal["nombre_canonico"].str.lower().isin(procesados)]
 
-    print(f"  Ya procesados: {len(procesados)}")
-    print(f"  Pendientes:    {len(pendientes)}")
+    print(f"Registry: {len(df_reg)} artistas | Con canal: {len(df_con_canal)} | Sin canal: {len(df_sin_canal)}")
+    print(f"Ya procesados: {len(procesados)} | Pendientes: {len(pendientes_df)}")
 
-    if not pendientes:
+    if pendientes_df.empty:
         print("Todos los artistas ya están procesados.")
         return
 
-    lote = pendientes[:args.batch_size] if args.batch_size > 0 else pendientes
-    quota_est = len(lote) * 102
-    print(f"  Este lote: {len(lote)} artistas (~{quota_est} unidades de quota)\n")
+    lote = pendientes_df.head(args.batch_size) if args.batch_size > 0 else pendientes_df
+    print(f"Este lote: {len(lote)} artistas (~{len(lote)} unidades de quota)\n")
 
-    collector = YouTubeCollector(delay=args.delay)
-    nuevas_filas = collector.procesar_lista(lote, procesados)
+    collector  = YouTubeCollector(delay=args.delay)
+    nuevas_filas = []
+    sospechosos  = []
+    total        = len(lote)
+
+    for i, (_, row) in enumerate(lote.iterrows(), 1):
+        nombre     = row["nombre_canonico"]
+        channel_id = row["yt_channel_id"]
+        print(f"[{i}/{total}] {nombre} ({channel_id}) ...", end=" ", flush=True)
+
+        try:
+            stats = collector.obtener_stats(channel_id)
+        except RuntimeError as e:
+            print(f"\n{e}")
+            print(f"Guardando progreso ({len(nuevas_filas)} artistas)...")
+            break
+
+        if not stats:
+            print("sin datos")
+            nuevas_filas.append({"nombre_buscado": nombre, "channel_id": channel_id})
+            continue
+
+        muy_pequeno = stats.pop("_muy_pequeno", False)
+        fila = {"nombre_buscado": nombre, "channel_id": channel_id, **stats}
+        nuevas_filas.append(fila)
+
+        subs = f"{stats.get('suscriptores'):,}" if stats.get("suscriptores") else "ocultos"
+        aviso = " CANAL MUY PEQUEÑO — revisar" if muy_pequeno else ""
+        print(f"subs={subs}{aviso}")
+        if muy_pequeno:
+            sospechosos.append(nombre)
+
+        time.sleep(args.delay)
 
     cols = [
-        "nombre_buscado", "nombre_canal", "channel_id", "match_score",
+        "nombre_buscado", "channel_id",
         "suscriptores", "vistas_totales", "num_videos",
         "fecha_creacion", "pais_canal", "descripcion_canal",
     ]
@@ -400,10 +339,14 @@ def main():
         df_nuevo = pd.DataFrame(nuevas_filas).reindex(columns=cols)
         df_final = pd.concat([df_existe, df_nuevo], ignore_index=True)
         df_final.to_csv(out_path, index=False, encoding="utf-8")
-        print(f"\n{len(nuevas_filas)} artistas → {out_path}")
+        print(f"\n{len(nuevas_filas)} artistas → {out_path.name}")
 
-    total_csv = len(df_existe) + len(nuevas_filas)
-    print(f"\nRESUMEN: {total_csv}/{len(artistas)} artistas en CSV")
+    if sospechosos:
+        print(f"Canal muy pequeño — revisar manualmente: {', '.join(sospechosos)}")
+    if df_sin_canal:
+        print(f"Sin canal en registry ({len(df_sin_canal)}): {', '.join(df_sin_canal[:5])}{'...' if len(df_sin_canal) > 5 else ''}")
+
+    print(f"\nRESUMEN: {len(df_existe) + len(nuevas_filas)}/{len(df_reg)} artistas en CSV")
 
 
 if __name__ == "__main__":

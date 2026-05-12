@@ -1,41 +1,54 @@
+"""
+Obtiene el historial de conciertos de cada artista desde setlist.fm.
+Usa el MBID (sl_mbid) o el nombre (sl_nombre) del registry directamente,
+eliminando la dependencia de búsquedas por nombre y de lastfm_artistas.csv.
+
+Genera: data/raw/setlistfm_conciertos.csv
+
+Uso:
+  python -m src.data_collectors.setlistfm
+  python -m src.data_collectors.setlistfm --force Dano BEJO
+"""
+
+import sys
+import time
+import argparse
 import requests
 import pandas as pd
-import time
-import os
-from difflib import SequenceMatcher
-from dotenv import load_dotenv
 from pathlib import Path
+from dotenv import load_dotenv
 
 load_dotenv()
 
-API_KEY = os.getenv("SETLIST_FM_API_KEY")
-if not API_KEY:
-    raise EnvironmentError("SETLIST_FM_API_KEY no encontrada. Revisa tu .env")
+ROOT = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(ROOT))
 
+import os
+API_KEY  = os.getenv("SETLIST_FM_API_KEY")
 BASE_URL = "https://api.setlist.fm/rest/1.0"
-HEADERS = {
-    "x-api-key": API_KEY,
-    "Accept":    "application/json"
-}
+HEADERS  = {"x-api-key": API_KEY or "", "Accept": "application/json"}
 
-ARTISTS_FILE = Path("artistas.txt")
-LASTFM_CSV   = Path("data/raw/lastfm_artistas.csv")
-SETLISTS_CSV = Path("data/raw/setlistfm_conciertos.csv")
+SETLISTS_CSV = ROOT / "data" / "raw" / "setlistfm_conciertos.csv"
 SETLISTS_CSV.parent.mkdir(parents=True, exist_ok=True)
 
-SIMILARITY_THRESHOLD = 0.6   # mínimo para aceptar un match por nombre
+SIMILARITY_THRESHOLD = 0.6
 
 
-def similitud(a, b):
+def _similitud(a: str, b: str) -> float:
+    from difflib import SequenceMatcher
     return SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio()
 
 
-def buscar_artista_por_nombre(nombre):
-    """Busca en setlist.fm por nombre y valida similitud. Devuelve (mbid, nombre_sf) o None."""
+def buscar_mbid_por_nombre(nombre: str) -> tuple[str, str] | None:
+    """
+    Busca el MBID en setlist.fm por nombre cuando no hay MBID en el registry.
+    Devuelve (mbid, nombre_sf) o None si no supera el umbral.
+    """
     r = requests.get(
         f"{BASE_URL}/search/artists",
         headers=HEADERS,
-        params={"artistName": nombre, "p": 1, "sort": "relevance"}
+        params={"artistName": nombre, "p": 1, "sort": "relevance"},
+        timeout=10,
     )
     if r.status_code != 200:
         return None
@@ -43,21 +56,22 @@ def buscar_artista_por_nombre(nombre):
     if not items:
         return None
     a = items[0]
-    nombre_encontrado = a.get("name", "")
-    score = similitud(nombre, nombre_encontrado)
+    nombre_sf = a.get("name", "")
+    score = _similitud(nombre, nombre_sf)
     if score < SIMILARITY_THRESHOLD:
-        print(f"[match rechazado: '{nombre_encontrado}' score={score:.2f}]", end=" ")
+        print(f"  [match rechazado: '{nombre_sf}' score={score:.2f}]", end=" ")
         return None
-    return a.get("mbid"), nombre_encontrado
+    return a.get("mbid"), nombre_sf
 
 
-def obtener_setlists(mbid, max_paginas=5):
+def obtener_setlists(mbid: str, max_paginas: int = 5) -> list:
     todos = []
     for p in range(1, max_paginas + 1):
         r = requests.get(
             f"{BASE_URL}/artist/{mbid}/setlists",
             headers=HEADERS,
-            params={"p": p}
+            params={"p": p},
+            timeout=10,
         )
         if r.status_code != 200:
             break
@@ -66,14 +80,13 @@ def obtener_setlists(mbid, max_paginas=5):
         if not setlists:
             break
         todos.extend(setlists)
-        total = int(data.get("total", 0))
-        if len(todos) >= total:
+        if len(todos) >= int(data.get("total", 0)):
             break
         time.sleep(1.0)
     return todos
 
 
-def parsear_setlist(s, mbid, nombre):
+def parsear_setlist(s: dict, mbid: str, nombre_canonico: str) -> dict:
     venue  = s.get("venue", {})
     ciudad = venue.get("city", {})
     sets   = s.get("sets", {}).get("set", [])
@@ -84,12 +97,11 @@ def parsear_setlist(s, mbid, nombre):
         song.get("name", "")
         for st in sets for song in st.get("song", [])
     ]
-
     return {
-        "nombre":          nombre,
+        "nombre":          nombre_canonico,
         "setlistfm_mbid":  mbid,
         "setlist_id":      s.get("id"),
-        "fecha":           s.get("eventDate"),        # dd-MM-yyyy
+        "fecha":           s.get("eventDate"),
         "venue_id":        venue.get("id"),
         "venue_nombre":    venue.get("name"),
         "ciudad":          ciudad.get("name"),
@@ -104,91 +116,95 @@ def parsear_setlist(s, mbid, nombre):
     }
 
 
-# ── Cargar MBIDs conocidos desde lastfm_artistas.csv ────────────────────────
-mbids_conocidos = {}   # nombre_buscado.lower() → mbid
-if LASTFM_CSV.exists():
-    df_lastfm = pd.read_csv(LASTFM_CSV)
-    for _, row in df_lastfm.iterrows():
-        mbid = row.get("mbid")
-        if pd.notna(mbid) and str(mbid).strip():
-            mbids_conocidos[str(row["nombre_buscado"]).lower().strip()] = str(mbid).strip()
+# ── Main ──────────────────────────────────────────────────────────────────────
 
-print(f"MBIDs conocidos desde Last.fm: {len(mbids_conocidos)}")
+def main():
+    if not API_KEY:
+        raise EnvironmentError("SETLIST_FM_API_KEY no encontrada en .env")
 
-# ── Cargar ya procesados (incremental) ──────────────────────────────────────
-df_existe          = pd.read_csv(SETLISTS_CSV) if SETLISTS_CSV.exists() else pd.DataFrame()
-nombres_procesados = set(df_existe["nombre"].str.lower()) if not df_existe.empty else set()
-mbids_procesados   = set(df_existe["setlistfm_mbid"].dropna().astype(str)) if not df_existe.empty else set()
+    parser = argparse.ArgumentParser(description="Recoge conciertos de setlist.fm usando el registry")
+    parser.add_argument("--force", nargs="+", metavar="ARTISTA",
+                        help="Re-procesar estos artistas aunque ya existan en el CSV")
+    args = parser.parse_args()
 
-with open(ARTISTS_FILE, encoding="utf-8") as f:
-    nombres = [l.strip() for l in f if l.strip()]
+    from config.registry import cargar as cargar_registry
+    df_reg = cargar_registry()
 
-nuevas_filas   = []
-omitidos       = []
-no_encontrados = []
-matches_rechazados = []
+    df_existe          = pd.read_csv(SETLISTS_CSV) if SETLISTS_CSV.exists() else pd.DataFrame()
+    nombres_procesados = set(df_existe["nombre"].str.lower()) if not df_existe.empty else set()
+    mbids_procesados   = set(df_existe["setlistfm_mbid"].dropna().astype(str)) if not df_existe.empty else set()
 
-# ── Bucle principal ──────────────────────────────────────────────────────────
-for nombre in nombres:
-    if nombre.lower() in nombres_procesados:
-        print(f"  -> Omitido (ya existe): {nombre}")
-        omitidos.append(nombre)
-        continue
+    if args.force and not df_existe.empty:
+        force_lower = {a.lower() for a in args.force}
+        df_existe = df_existe[~df_existe["nombre"].str.lower().isin(force_lower)].reset_index(drop=True)
+        df_existe.to_csv(SETLISTS_CSV, index=False, encoding="utf-8")
+        nombres_procesados = set(df_existe["nombre"].str.lower())
+        mbids_procesados   = set(df_existe["setlistfm_mbid"].dropna().astype(str))
+        print(f"Re-procesando: {args.force}")
 
-    print(f"  Buscando: {nombre} ...", end=" ")
+    print(f"Registry: {len(df_reg)} artistas | Ya en CSV: {len(nombres_procesados)}")
 
-    # 1. Intentar con MBID conocido de Last.fm (más fiable)
-    mbid = mbids_conocidos.get(nombre.lower().strip())
-    if mbid:
-        if mbid in mbids_procesados:
+    nuevas_filas   = []
+    no_encontrados = []
+    omitidos       = 0
+
+    for _, row in df_reg.iterrows():
+        nombre_can = row["nombre_canonico"]
+        sl_mbid    = row.get("sl_mbid")
+        sl_nombre  = row.get("sl_nombre") or nombre_can
+
+        if nombre_can.lower() in nombres_procesados:
+            omitidos += 1
+            continue
+
+        print(f"  Buscando: {nombre_can} ...", end=" ", flush=True)
+
+        # Preferir MBID del registry; si no hay, buscar por nombre
+        mbid = sl_mbid if pd.notna(sl_mbid) and str(sl_mbid).strip() else None
+
+        if mbid and str(mbid) in mbids_procesados:
             print(f"omitido (MBID ya en CSV)")
-            omitidos.append(nombre)
+            omitidos += 1
             continue
-        print(f"ok  MBID desde Last.fm: {mbid}")
-        nombre_sf = nombre
-    else:
-        # 2. Buscar por nombre con validación de similitud
-        resultado = buscar_artista_por_nombre(nombre)
-        if not resultado:
-            print("x no encontrado / match rechazado")
-            no_encontrados.append(nombre)
-            nuevas_filas.append({"nombre": nombre})
-            continue
-        mbid, nombre_sf = resultado
-        if mbid in mbids_procesados:
-            print(f"omitido (MBID ya en CSV: '{nombre_sf}')")
-            omitidos.append(nombre)
-            continue
-        print(f"ok  MBID: {mbid} (nombre: '{nombre_sf}')")
 
-    setlists = obtener_setlists(mbid, max_paginas=5)
-    print(f"    -> {len(setlists)} conciertos encontrados")
+        if not mbid:
+            resultado = buscar_mbid_por_nombre(str(sl_nombre))
+            if not resultado:
+                print("x no encontrado / match rechazado")
+                no_encontrados.append(nombre_can)
+                nuevas_filas.append({"nombre": nombre_can})
+                continue
+            mbid, nombre_sf = resultado
+            if str(mbid) in mbids_procesados:
+                print(f"omitido (MBID ya en CSV: '{nombre_sf}')")
+                omitidos += 1
+                continue
+            print(f"ok MBID: {mbid} (nombre SF: '{nombre_sf}')")
+        else:
+            print(f"ok MBID desde registry: {mbid}")
 
-    if not setlists:
-        nuevas_filas.append({"nombre": nombre_sf, "setlistfm_mbid": mbid})
-    else:
-        for s in setlists:
-            nuevas_filas.append(parsear_setlist(s, mbid, nombre_sf))
+        setlists = obtener_setlists(str(mbid), max_paginas=5)
+        print(f"    → {len(setlists)} conciertos")
 
-    time.sleep(1.5)
+        if not setlists:
+            nuevas_filas.append({"nombre": nombre_can, "setlistfm_mbid": mbid})
+        else:
+            for s in setlists:
+                nuevas_filas.append(parsear_setlist(s, str(mbid), nombre_can))
 
-# ── Guardar CSV ──────────────────────────────────────────────────────────────
-if nuevas_filas:
-    df_nuevo = pd.DataFrame(nuevas_filas)
-    df_final = pd.concat([df_existe, df_nuevo], ignore_index=True)
-    df_final.to_csv(SETLISTS_CSV, index=False, encoding="utf-8")
-    print(f"\nOK {len(nuevas_filas)} filas -> {SETLISTS_CSV}")
-else:
-    print("\nNada nuevo que guardar.")
+        time.sleep(1.5)
 
-# ── Resumen ──────────────────────────────────────────────────────────────────
-print(f"\nRESUMEN:")
-print(f"   Total artistas en lista:   {len(nombres)}")
-print(f"   Ya procesados (omitidos):  {len(omitidos)}")
-print(f"   No encontrados/rechazados: {len(no_encontrados)}")
-print(f"   Filas añadidas:            {len(nuevas_filas)}")
+    if nuevas_filas:
+        df_nuevo = pd.DataFrame(nuevas_filas)
+        df_final = pd.concat([df_existe, df_nuevo], ignore_index=True)
+        df_final.to_csv(SETLISTS_CSV, index=False, encoding="utf-8")
+        print(f"\nOK {len(nuevas_filas)} filas → {SETLISTS_CSV.name}")
 
-if no_encontrados:
-    print(f"\n   No encontrados / match rechazado en setlist.fm:")
-    for a in no_encontrados:
-        print(f"      - {a}")
+    print(f"\nRESUMEN: {len(df_reg)} artistas | Omitidos: {omitidos} | No encontrados: {len(no_encontrados)}")
+    if no_encontrados:
+        print(f"Sin datos: {', '.join(no_encontrados)}")
+        print("Revisa sl_nombre en el registry o añade sl_mbid manualmente.")
+
+
+if __name__ == "__main__":
+    main()

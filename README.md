@@ -20,10 +20,16 @@ pages/
   3_Analisis_IA.py   # Chat con agente LangChain + Groq
 src/
   data_collectors/   # Clientes de API para ingesta de datos raw
+    spotify.py           # Búsqueda de artistas en Spotify (usado solo por el resolver)
+    spotify_features.py  # Discografía y top tracks usando IDs del registry
+    lastfmapi.py         # Oyentes, scrobbles y géneros usando nombres del registry
+    youtube.py           # Estadísticas de canal usando channel_id del registry
+    setlistfm.py         # Historial de conciertos usando MBID del registry
+    tendencias.py        # Google Trends + YouTube reciente
   features/          # Ingeniería de características y preprocesado
   models/            # Entrenamiento, evaluación y serialización de modelos
     train.py         # Entrena XGBoost tuned y serializa modelo + metadata
-    predict.py       # Inferencia: 8 inputs → 31 features → tier predicho
+    predict.py       # Inferencia: 8 inputs → 32 features → tier predicho
     shap_explainer.py# Explicabilidad SHAP: plots globales e individuales
   agents/
     explicador.py    # Agente LangChain: explicación inicial + chat de seguimiento
@@ -31,11 +37,15 @@ src/
     log_streamlit.py # Logging de sesión y sidebar persistente
     feature_labels.py# Nombres amigables, agrupación, formateo y detección de alertas
 config/
-  youtube_correcciones.py  # Audit trail de canales YouTube corregidos manualmente
+  registry.py              # Utilidad cargar()/guardar() para el registry
+  artistas_registry.csv    # ★ Fuente de verdad de identidades entre plataformas (en git)
 scripts/
-  generar_labels.py  # Etiquetado semisupervisado desde historial de venues
-  generar_shap.py    # Genera plots SHAP globales en reports/figures/
-  validar_setlistfm.py # Valida si el 41% de NaN en sl_num_conciertos es un artefacto
+  00_resolver_identidades.py  # Resuelve IDs de plataformas para artistas nuevos
+  migrar_registry.py          # Migración one-time desde CSVs existentes al registry
+  pipeline.py                 # Orquestador completo: recolección → features → entrenamiento
+  generar_labels.py           # Etiquetado semisupervisado desde historial de venues
+  generar_shap.py             # Genera plots SHAP globales en reports/figures/
+  validar_setlistfm.py        # Valida si el 41% de NaN en sl_num_conciertos es un artefacto
 notebooks/           # Análisis exploratorio y modelado
   01_eda.ipynb       # EDA completo con Kruskal-Wallis y correlaciones
   02_modelado.ipynb  # Entrenamiento y comparativa de modelos
@@ -53,8 +63,9 @@ models/              # Artefactos entrenados (gitignored)
 reports/
   figures/           # PNGs de notebooks + plots SHAP (shap_summary_bar, shap_beeswarm_alto)
 data/
-  raw/               # CSVs originales de cada fuente (gitignored)
-  processed/         # artist_features.csv — matriz de features unificada
+  raw/               # CSVs originales de cada fuente (gitignored, excepto artistas_labels.csv)
+    artistas_labels.csv  # ★ Variable objetivo — tiers curados manualmente (en git)
+  processed/         # artist_features.csv — matriz de features unificada (gitignored)
 ```
 
 ---
@@ -114,20 +125,61 @@ Verificado: **NaN en X = 0** en ambos modos sobre los 157 artistas.
 
 ---
 
+## Registry de artistas (`config/artistas_registry.csv`)
+
+Fuente de verdad única para identidades de artistas entre plataformas. **Este fichero está en git** — contiene las resoluciones de nombre/ID para cada plataforma, incluidas las correcciones manuales, de forma que nunca se pierden al clonar el repositorio.
+
+| Columna | Descripción |
+|---------|-------------|
+| `nombre_canonico` | Nombre canónico del artista (clave primaria) |
+| `spotify_id` / `spotify_nombre` | Artist ID y nombre tal como lo devuelve Spotify |
+| `lastfm_nombre` / `lastfm_mbid` | Nombre y MusicBrainz ID en Last.fm |
+| `yt_channel_id` / `yt_nombre_canal` | ID y nombre del canal de YouTube |
+| `sl_nombre` / `sl_mbid` | Nombre y MBID en setlist.fm |
+| `manual_override` | `True` = no sobreescribir automáticamente |
+| `notas` | Motivo de corrección o artistas sin canal |
+
+### Pipeline de recolección
+
+```
+artistas.txt
+    │
+    ▼
+scripts/00_resolver_identidades.py   ← llama a las 4 APIs, umbral alto de confianza
+    │
+    ├── Resuelto → config/artistas_registry.csv  (manual_override=False)
+    └── No resuelto → pendientes_revision.csv    (rellenar a mano → manual_override=True)
+    │
+    ▼
+scripts/pipeline.py                  ← usa IDs del registry, nunca busca por nombre
+    │
+    ├── src/data_collectors/*.py     → data/raw/*.csv
+    ├── scripts/generar_labels.py    → data/raw/artistas_labels.csv
+    ├── src/features/build_features  → data/processed/artist_features.csv
+    └── src/models/train.py          → models/xgb_tuned.joblib
+```
+
+**Para añadir artistas nuevos:**
+```bash
+# 1. Añadir nombres a artistas.txt
+# 2. Resolver identidades (llama a las 4 APIs)
+python scripts/00_resolver_identidades.py
+# 3. Revisar pendientes_revision.csv y completar artistas_registry.csv a mano
+# 4. Ejecutar el pipeline
+python scripts/pipeline.py
+```
+
+Los colectores son **incrementales**: si un artista ya tiene datos en el CSV, se salta. Los datos corregidos manualmente nunca se sobreescriben.
+
+---
+
 ## Fuentes de datos
 
-### Spotify IDs (`src/data_collectors/spotify.py`)
-
-Extrae el `artist_id` (Spotify URI) de cada artista a partir de `artistas.txt`. Es el identificador universal del ecosistema musical digital que usan el resto de fuentes como referencia.
-
-- CSV de salida: `data/raw/spotify_ids.csv`
-- Columnas: `nombre_buscado`, `nombre_spotify`, `artist_id`, `spotify_uri`, `spotify_url`, `match_score`
-
-> **Nota**: Spotify eliminó `followers`, `popularity` y `genres` de su API Web en noviembre 2024, incluso con OAuth. No es un problema de código — esos campos ya no existen en ninguna respuesta de la API. Ver sección [Decisiones y cambios de rumbo](#decisiones-y-cambios-de-rumbo).
+Todos los colectores usan los IDs de `config/artistas_registry.csv` directamente, sin búsquedas por nombre, lo que elimina los fallos de matching entre plataformas.
 
 ### Spotify Features (`src/data_collectors/spotify_features.py`)
 
-Usa los IDs de `spotify_ids.csv` para extraer features de discografía y top tracks.
+Usa `spotify_id` del registry para extraer features de discografía y top tracks.
 
 - `data/raw/spotify_discografia.csv` — una fila por artista: `num_albums`, `num_singles`, `num_eps`, `num_total_releases`, `primer_lanzamiento`, `ultimo_lanzamiento`, `anos_activo`, `releases_por_ano`
 - `data/raw/spotify_top_tracks.csv` — una fila por canción (top 10/artista): `track_name`, `duration_ms`, `explicit`, `num_artistas`
@@ -137,9 +189,10 @@ Usa los IDs de `spotify_ids.csv` para extraer features de discografía y top tra
 ### Last.fm (`src/data_collectors/lastfmapi.py`)
 
 Fuente principal para **oyentes, scrobbles y géneros**, ya que Spotify no los proporciona.
+Usa `lastfm_nombre` del registry directamente (llamada `artist.getInfo` sin búsqueda previa).
 
 - CSV de salida: `data/raw/lastfm_artistas.csv`
-- Columnas: `nombre_buscado`, `nombre_lastfm`, `oyentes`, `scrobbles`, `generos`, `lastfm_url`, `mbid`, `match_score`, `artist_id`
+- Columnas: `nombre_buscado`, `nombre_lastfm`, `oyentes`, `scrobbles`, `generos`, `lastfm_url`, `mbid`
 
 **Cómo interpretar los datos de Last.fm:**
 - `oyentes` = usuarios únicos históricos, no mensuales. Los números son menores que en Spotify porque Last.fm tiene menos usuarios.
@@ -149,11 +202,12 @@ Fuente principal para **oyentes, scrobbles y géneros**, ya que Spotify no los p
 ### YouTube (`src/data_collectors/youtube.py`)
 
 Presencia digital en YouTube: tamaño de audiencia, actividad y engagement.
+Usa `yt_channel_id` del registry directamente (una sola llamada `channels.list`, ~1 unidad de quota por artista frente a ~100 unidades de la búsqueda anterior).
 
 - CSV de salida: `data/raw/youtube_artistas.csv`
-- Columnas: `nombre_buscado`, `canal_youtube`, `suscriptores`, `vistas_totales`, `num_videos`, `fecha_creacion`
+- Columnas: `nombre_buscado`, `channel_id`, `suscriptores`, `vistas_totales`, `num_videos`, `fecha_creacion`, `pais_canal`, `descripcion_canal`
 
-**Correcciones manuales aplicadas**: varios artistas tenían canales incorrectos o desactualizados. Se corrigieron manualmente los suscriptores y se nularon las vistas de los canales erróneos (BEJO, Rels B, Morad, Dano, Cecilio G, Choclock, Yung Beef, entre otros). Dos artistas (Xico Palma, GREKKY) no tienen canal de YouTube — sus valores se dejaron a nulo.
+**Correcciones manuales**: varios artistas tenían canales incorrectos (BEJO, Rels B, Morad, Dano, Cecilio G, Choclock, Yung Beef, entre otros). Las correcciones están en `config/artistas_registry.csv` con `manual_override=True`. Dos artistas (Xico Palma, GREKKY) no tienen canal — su `yt_channel_id` es nulo en el registry y sus features se imputan como 0.
 
 ### Tendencias (`src/data_collectors/tendencias.py`)
 
@@ -617,7 +671,7 @@ Cobertura peor que Ticketmaster para artistas underground españoles. Scraping f
 
 ### Spotify `popularity`, `followers`, `audio_features` — bloqueados desde noviembre 2024
 
-Spotify bloqueó estos endpoints en noviembre 2024, incluso con OAuth. `popularity` habría sido la feature más discriminativa. Se creó `src/data_collectors/spotify_artistas.py` documentando el intento (devuelve 403).
+Spotify bloqueó estos endpoints en noviembre 2024, incluso con OAuth. `popularity` habría sido la feature más discriminativa. El colector `spotify_artistas.py` fue eliminado — devolvía 403 en todos los casos.
 
 ---
 
@@ -625,7 +679,9 @@ Spotify bloqueó estos endpoints en noviembre 2024, incluso con OAuth. `populari
 
 ### Matching de artistas
 
-Los scripts usan **fuzzy matching** (`difflib.SequenceMatcher`) con umbral 60%. Artistas con nombres cortos o genéricos son propensos a falsos positivos y se revisaron manualmente.
+`scripts/00_resolver_identidades.py` usa **fuzzy matching** con umbrales altos (80% para Spotify/Last.fm/setlist.fm, 65% para YouTube). Los artistas que no superan el umbral se escriben en `pendientes_revision.csv` para revisión manual. Una vez resueltos, se añaden al registry con `manual_override=True`.
+
+Los colectores de datos no hacen búsquedas: usan los IDs del registry directamente, eliminando los falsos positivos por completo en ejecuciones posteriores.
 
 ### Imputación de setlist.fm — artefacto detectado y corregido
 
@@ -635,12 +691,15 @@ Al mismo tiempo, las features de setlist.fm tienen señal real: el modelo pierde
 
 **Corrección aplicada**: se añadió `sl_tiene_datos` (0/1), un flag binario creado en `preprocess.py` antes de cualquier imputación, que hace explícita la distinción entre "sin perfil en setlist.fm" y "0 conciertos documentados". El modelo puede ahora aprender la correlación de forma honesta en lugar de inferirla de un valor imputado.
 
-### Correcciones manuales de YouTube
+### Correcciones manuales de plataformas
 
-Varios artistas compartían canales o tenían canales incorrectos. Los suscriptores corregidos están en `youtube_artistas.csv`. El módulo `config/youtube_correcciones.py` documenta estos casos y sirve como audit trail:
+Las correcciones de identidad entre plataformas se gestionan en `config/artistas_registry.csv`:
 
-- `SIN_CANAL`: artistas sin canal de YouTube (Xico Palma, GREKKY) — sus features se imputan como 0.
-- `CORRECCIONES`: dict vacío que debe rellenarse con los ~10 artistas corregidos manualmente, indicando `channel_id`, `nombre_canal` y `motivo`. Una vez relleno, el colector `youtube.py` lo usa automáticamente en futuras re-ejecuciones sin consumir quota de la API.
+- Artistas con canal incorrecto en YouTube: editar `yt_channel_id` y `yt_nombre_canal`, poner `manual_override=True`.
+- Artistas sin canal de YouTube (Xico Palma, GREKKY): dejar `yt_channel_id` en blanco, `manual_override=True`, añadir nota en `notas`.
+- Artistas con nombre distinto en Last.fm o setlist.fm: editar `lastfm_nombre` / `sl_nombre`, poner `manual_override=True`.
+
+El flag `manual_override=True` garantiza que `scripts/00_resolver_identidades.py` nunca sobreescriba esas entradas.
 
 ### Validación de la imputación de setlist.fm
 

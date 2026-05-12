@@ -1,32 +1,43 @@
 """
-Obtiene datos de artistas desde Last.fm usando los nombres de artistas.txt.
-Extrae: oyentes mensuales, scrobbles totales, géneros (tags) y biografía corta.
-Los resultados se cruzan con spotify_ids.csv para añadir el artist_id de Spotify.
+Obtiene datos de artistas desde Last.fm usando los nombres del registry.
+Extrae: oyentes mensuales, scrobbles totales, géneros y biografía corta.
+
+Usa lastfm_nombre del registry directamente (sin búsqueda por nombre), lo que
+elimina los fallos de resolución que ocurren cuando el nombre canónico difiere
+del nombre en Last.fm.
+
+Genera: data/raw/lastfm_artistas.csv
+
+Uso:
+  python -m src.data_collectors.lastfmapi
+  python -m src.data_collectors.lastfmapi --force RVFV Maka
 """
 
 import os
+import sys
 import time
 import difflib
 import requests
 import pandas as pd
 from dotenv import load_dotenv
-import argparse
 from pathlib import Path
 
 load_dotenv()
 
-API_KEY  = os.getenv('LASTFM_API_KEY')
-BASE_URL = 'http://ws.audioscrobbler.com/2.0/'
+ROOT = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(ROOT))
+
+API_KEY  = os.getenv("LASTFM_API_KEY")
+BASE_URL = "http://ws.audioscrobbler.com/2.0/"
 
 
 class LastFMCollector:
     def __init__(self):
         if not API_KEY:
-            raise ValueError("❌ LASTFM_API_KEY no encontrada en .env")
-        print("✓ Cliente de Last.fm inicializado correctamente")
+            raise ValueError("LASTFM_API_KEY no encontrada en .env")
 
     def _get(self, params: dict) -> dict:
-        params.update({'api_key': API_KEY, 'format': 'json'})
+        params.update({"api_key": API_KEY, "format": "json"})
         r = requests.get(BASE_URL, params=params, timeout=10)
         r.raise_for_status()
         return r.json()
@@ -35,163 +46,140 @@ class LastFMCollector:
     def _similitud(a: str, b: str) -> float:
         return difflib.SequenceMatcher(None, a.lower(), b.lower()).ratio()
 
-    def buscar_artista(self, nombre: str, umbral: float = 0.6) -> dict:
+    def obtener_info(self, nombre_lastfm: str) -> dict | None:
+        """
+        Obtiene datos completos de un artista usando su nombre exacto en Last.fm.
+        No realiza búsqueda: usa el nombre tal como está en el registry.
+        """
         try:
-            # Buscar varios candidatos y elegir el más parecido
-            busqueda = self._get({'method': 'artist.search', 'artist': nombre, 'limit': 5})
-            candidatos = busqueda.get('results', {}).get('artistmatches', {}).get('artist', [])
-
-            if not candidatos:
-                print(f"⚠️  No se encontró: {nombre}")
+            data = self._get({"method": "artist.getInfo", "artist": nombre_lastfm})
+            if "error" in data:
+                print(f"  Last.fm error: {data.get('message')}")
                 return None
-
-            mejor = max(candidatos, key=lambda a: self._similitud(nombre, a['name']))
-            score = self._similitud(nombre, mejor['name'])
-
-            if score < umbral:
-                print(f"⚠️  Match rechazado: '{nombre}' → '{mejor['name']}' (similitud {score:.0%} < {umbral:.0%})")
-                return None
-
-            # Obtener datos completos del candidato elegido
-            data = self._get({'method': 'artist.getInfo', 'artist': mejor['name']})
-            if 'error' in data:
-                print(f"⚠️  No encontrado: {nombre} ({data.get('message')})")
-                return None
-
-            a = data['artist']
-            tags = [t['name'] for t in a.get('tags', {}).get('tag', [])]
-            stats = a.get('stats', {})
-
-            datos = {
-                'nombre_buscado': nombre,
-                'nombre_lastfm':  a.get('name'),
-                'oyentes':        int(stats.get('listeners', 0)),
-                'scrobbles':      int(stats.get('playcount', 0)),
-                'generos':        ', '.join(tags) if tags else 'Sin género',
-                'lastfm_url':     a.get('url'),
-                'mbid':           a.get('mbid', ''),
-                'match_score':    round(score, 2),
+            a     = data["artist"]
+            tags  = [t["name"] for t in a.get("tags", {}).get("tag", [])]
+            stats = a.get("stats", {})
+            return {
+                "nombre_lastfm": a.get("name"),
+                "oyentes":       int(stats.get("listeners", 0)),
+                "scrobbles":     int(stats.get("playcount", 0)),
+                "generos":       ", ".join(tags) if tags else "Sin género",
+                "lastfm_url":    a.get("url"),
+                "mbid":          a.get("mbid", "") or None,
             }
-
-            print(f"✓ {datos['nombre_lastfm']} (similitud {score:.0%}): {datos['oyentes']:,} oyentes | {datos['generos']}")
-            return datos
-
         except Exception as e:
-            print(f"❌ Error al buscar {nombre}: {str(e)}")
+            print(f"  Error Last.fm para '{nombre_lastfm}': {e}")
             return None
 
-    def procesar_lista(self, lista_artistas: list, delay: float = 0.5) -> pd.DataFrame:
-        resultados = []
-        no_encontrados = []
+    def buscar_artista(self, nombre: str, umbral: float = 0.6) -> dict | None:
+        """
+        Búsqueda por nombre con validación de similitud.
+        Usado por scripts/00_resolver_identidades.py para poblar el registry.
+        """
+        try:
+            busqueda = self._get({"method": "artist.search", "artist": nombre, "limit": 5})
+            candidatos = busqueda.get("results", {}).get("artistmatches", {}).get("artist", [])
+            if not candidatos:
+                return None
+            mejor = max(candidatos, key=lambda a: self._similitud(nombre, a["name"]))
+            score = self._similitud(nombre, mejor["name"])
+            if score < umbral:
+                print(f"  Match rechazado: '{nombre}' → '{mejor['name']}' ({score:.0%})")
+                return None
+            data = self._get({"method": "artist.getInfo", "artist": mejor["name"]})
+            if "error" in data:
+                return None
+            a    = data["artist"]
+            tags = [t["name"] for t in a.get("tags", {}).get("tag", [])]
+            return {
+                "nombre_buscado": nombre,
+                "nombre_lastfm":  a.get("name"),
+                "oyentes":        int(a.get("stats", {}).get("listeners", 0)),
+                "scrobbles":      int(a.get("stats", {}).get("playcount", 0)),
+                "generos":        ", ".join(tags) if tags else "Sin género",
+                "lastfm_url":     a.get("url"),
+                "mbid":           a.get("mbid", "") or None,
+                "match_score":    round(score, 2),
+            }
+        except Exception as e:
+            print(f"  Error al buscar '{nombre}': {e}")
+            return None
 
-        print(f"\n🎵 Procesando {len(lista_artistas)} artistas...\n")
 
-        for i, nombre in enumerate(lista_artistas, 1):
-            print(f"[{i}/{len(lista_artistas)}] Buscando: {nombre}")
-
-            datos = None
-            for intento in range(3):
-                try:
-                    datos = self.buscar_artista(nombre.strip())
-                    break
-                except Exception as e:
-                    espera = 10 * (intento + 1)
-                    print(f"  ⚠️  Error de conexión (intento {intento+1}/3), reintentando en {espera}s: {e}")
-                    time.sleep(espera)
-            else:
-                print(f"  ❌ Sin datos tras 3 intentos: {nombre}")
-
-            if datos:
-                resultados.append(datos)
-            else:
-                # Fila vacía para rellenar manualmente
-                resultados.append({
-                    'nombre_buscado': nombre,
-                    'nombre_lastfm': None,
-                    'oyentes': None,
-                    'scrobbles': None,
-                    'generos': None,
-                    'lastfm_url': None,
-                    'mbid': None,
-                    'match_score': None,
-                })
-                no_encontrados.append(nombre)
-
-            time.sleep(delay)
-
-        df = pd.DataFrame(resultados)
-        con_datos = len(df) - len(no_encontrados)
-        print(f"\n✓ Procesados {len(df)} artistas ({con_datos} con datos, {len(no_encontrados)} para rellenar manualmente)")
-
-        if no_encontrados:
-            print(f"\n📝 Rellenar manualmente ({len(no_encontrados)}):")
-            for a in no_encontrados:
-                print(f"   - {a}")
-
-        return df
-
+# ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--artists', type=str, default='artistas.txt')
-    parser.add_argument('--spotify-ids', type=str, default='data/raw/spotify_ids.csv')
-    parser.add_argument('--output', type=str, default='data/raw/lastfm_artistas.csv')
-    parser.add_argument('--force', nargs='+', metavar='ARTISTA',
-                        help='Re-procesar estos artistas aunque ya existan en el CSV')
+    import argparse
+    parser = argparse.ArgumentParser(description="Recoge datos de artistas desde Last.fm")
+    parser.add_argument("--force", nargs="+", metavar="ARTISTA",
+                        help="Re-procesar estos artistas aunque ya existan en el CSV")
     args = parser.parse_args()
 
-    if not os.path.exists(args.artists):
-        print(f"❌ No se encuentra el archivo: {args.artists}")
+    output = ROOT / "data" / "raw" / "lastfm_artistas.csv"
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    from config.registry import cargar as cargar_registry
+    df_reg = cargar_registry()
+    # Usar lastfm_nombre si está en el registry; si no, usar nombre_canonico como fallback
+    df_reg["_nombre_lf"] = df_reg["lastfm_nombre"].fillna(df_reg["nombre_canonico"])
+
+    df_existe = pd.read_csv(output) if output.exists() else pd.DataFrame()
+
+    if args.force and not df_existe.empty:
+        force_lower = {a.lower() for a in args.force}
+        df_existe = df_existe[~df_existe["nombre_buscado"].str.lower().isin(force_lower)]
+        df_existe.to_csv(output, index=False, encoding="utf-8")
+        print(f"Re-procesando: {args.force}")
+
+    ya_procesados = set(df_existe["nombre_buscado"].str.lower()) if not df_existe.empty else set()
+    pendientes = df_reg[~df_reg["nombre_canonico"].str.lower().isin(ya_procesados)]
+
+    print(f"Registry: {len(df_reg)} artistas | Ya procesados: {len(ya_procesados)} | Pendientes: {len(pendientes)}")
+    if pendientes.empty:
+        print("No hay artistas nuevos que procesar.")
         return
-
-    with open(args.artists, 'r', encoding='utf-8') as f:
-        artistas = [line.strip() for line in f if line.strip()]
-
-    print(f"📋 {len(artistas)} artistas encontrados en {args.artists}")
-
-    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
-
-    # Cargar CSV existente y omitir artistas ya procesados
-    df_existente = pd.DataFrame()
-    ya_procesados = set()
-    if os.path.exists(args.output):
-        df_existente = pd.read_csv(args.output)
-        if args.force:
-            force_lower = {a.lower() for a in args.force}
-            df_existente = df_existente[~df_existente['nombre_buscado'].str.lower().isin(force_lower)]
-            df_existente.to_csv(args.output, index=False, encoding='utf-8')
-            print(f"Re-procesando: {args.force}")
-        ya_procesados = set(df_existente['nombre_buscado'].str.lower())
-        print(f"📂 {len(df_existente)} artistas ya en {args.output} — se omitirán")
-
-    nuevos = [a for a in artistas if a.lower() not in ya_procesados]
-    if not nuevos:
-        print("✓ No hay artistas nuevos que procesar")
-        return
-
-    print(f"🆕 {len(nuevos)} artistas nuevos a procesar")
 
     collector = LastFMCollector()
-    df_nuevos = collector.procesar_lista(nuevos)
+    nuevas_filas   = []
+    no_encontrados = []
+    total          = len(pendientes)
 
-    # Cruzar con spotify_ids.csv para añadir artist_id a los nuevos
-    if os.path.exists(args.spotify_ids):
-        df_spotify = pd.read_csv(args.spotify_ids)[['nombre_buscado', 'artist_id', 'spotify_uri']]
-        df_nuevos = df_nuevos.merge(df_spotify, on='nombre_buscado', how='left')
-        print(f"🔗 Cruzado con {args.spotify_ids}")
+    for i, (_, row) in enumerate(pendientes.iterrows(), 1):
+        nombre_can = row["nombre_canonico"]
+        nombre_lf  = row["_nombre_lf"]
+        print(f"[{i}/{total}] {nombre_can} (Last.fm: '{nombre_lf}')")
 
-    df = pd.concat([df_existente, df_nuevos], ignore_index=True)
-    df.to_csv(args.output, index=False, encoding='utf-8')
-    print(f"\n💾 Datos guardados en: {args.output}")
-    print(f"📊 Total: {len(df)} artistas ({len(df_existente)} previos + {len(df_nuevos)} nuevos)")
+        datos = None
+        for intento in range(3):
+            try:
+                datos = collector.obtener_info(nombre_lf)
+                break
+            except Exception as e:
+                espera = 10 * (intento + 1)
+                print(f"  Error de conexión (intento {intento+1}/3), reintentando en {espera}s: {e}")
+                time.sleep(espera)
 
-    if not df.empty:
-        print(f"\n📊 ESTADÍSTICAS:")
-        print(f"   Total artistas: {len(df)}")
-        print(f"   Promedio oyentes: {df['oyentes'].mean():,.0f}")
-        print(f"   Promedio scrobbles: {df['scrobbles'].mean():,.0f}")
-        print(f"   Artista más escuchado: {df.loc[df['oyentes'].idxmax(), 'nombre_lastfm']} ({df['oyentes'].max():,} oyentes)")
+        if datos:
+            fila = {"nombre_buscado": nombre_can, **datos}
+            print(f"  {datos['nombre_lastfm']}: {datos['oyentes']:,} oyentes | {datos['generos']}")
+        else:
+            fila = {"nombre_buscado": nombre_can}
+            no_encontrados.append(nombre_can)
+            print(f"  No encontrado")
+
+        nuevas_filas.append(fila)
+        time.sleep(0.5)
+
+    cols = ["nombre_buscado", "nombre_lastfm", "oyentes", "scrobbles", "generos", "lastfm_url", "mbid"]
+    df_nuevo  = pd.DataFrame(nuevas_filas).reindex(columns=cols)
+    df_final  = pd.concat([df_existe, df_nuevo], ignore_index=True)
+    df_final.to_csv(output, index=False, encoding="utf-8")
+    print(f"\nOK {len(nuevas_filas)} artistas → {output.name}")
+
+    if no_encontrados:
+        print(f"Sin datos ({len(no_encontrados)}): {', '.join(no_encontrados)}")
+        print("Revisa si el nombre en el registry (lastfm_nombre) es correcto.")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

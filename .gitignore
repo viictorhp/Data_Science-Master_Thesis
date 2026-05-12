@@ -9,13 +9,17 @@ ENV/
 *.env
 
 # Datos
-data/raw/
+data/raw/*
 data/processed/
 data/features/
 data/final/
 *.csv
 *.json
 *.html
+
+# Ficheros curados manualmente — se versionan aunque sean CSV/JSON
+!config/artistas_registry.csv
+!data/raw/artistas_labels.csv
 
 # Python
 __pycache__/

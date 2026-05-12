@@ -16,6 +16,7 @@ Uso:
 """
 
 import os
+import sys
 import time
 import argparse
 import requests
@@ -26,12 +27,13 @@ from pytrends.request import TrendReq
 
 load_dotenv()
 
+ROOT = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(ROOT))
+
 YOUTUBE_API_KEY  = os.getenv("YOUTUBE_API_KEY")
 YOUTUBE_BASE_URL = "https://www.googleapis.com/youtube/v3"
 
-ARTISTS_FILE   = Path("artistas.txt")
-YOUTUBE_CSV    = Path("data/raw/youtube_artistas.csv")
-OUTPUT_CSV     = Path("data/raw/tendencias.csv")
+OUTPUT_CSV = ROOT / "data" / "raw" / "tendencias.csv"
 OUTPUT_CSV.parent.mkdir(parents=True, exist_ok=True)
 
 DELAY_TRENDS  = 6.0   # Google Trends es sensible al rate limit
@@ -125,14 +127,16 @@ def main():
                         help="Re-procesar estos artistas aunque ya existan en el CSV")
     args = parser.parse_args()
 
-    with open(ARTISTS_FILE, encoding="utf-8") as f:
-        artistas = [l.strip() for l in f if l.strip()]
+    from config.registry import cargar as cargar_registry
+    df_reg   = cargar_registry()
+    artistas = df_reg["nombre_canonico"].tolist()
 
-    # Cargar channel_ids desde youtube_artistas.csv
-    channel_ids = {}
-    if YOUTUBE_CSV.exists():
-        df_yt = pd.read_csv(YOUTUBE_CSV)[["nombre_buscado", "channel_id"]].dropna(subset=["channel_id"])
-        channel_ids = dict(zip(df_yt["nombre_buscado"].str.lower(), df_yt["channel_id"]))
+    # Cargar channel_ids desde el registry
+    channel_ids = {
+        row["nombre_canonico"].lower(): row["yt_channel_id"]
+        for _, row in df_reg.iterrows()
+        if pd.notna(row.get("yt_channel_id"))
+    }
 
     # Carga incremental
     df_existe = pd.read_csv(OUTPUT_CSV) if OUTPUT_CSV.exists() else pd.DataFrame()

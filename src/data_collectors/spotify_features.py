@@ -1,24 +1,28 @@
 """
-Extrae features de Spotify por artista usando los IDs de spotify_ids.csv.
+Extrae features de Spotify por artista usando los IDs del registry.
 
 Genera dos CSVs:
   - spotify_discografia.csv   → una fila por artista con stats de discografía
-  - spotify_tracks.csv    → una fila por canción (top 10 por artista)
+  - spotify_tracks.csv        → una fila por canción (top 10 por artista)
 
-Variables nuevas respecto a spotify_ids.csv:
+Variables generadas:
   Discografía: num_albums, num_singles, num_eps, num_total_releases,
                primer_lanzamiento, ultimo_lanzamiento, anos_activo,
                releases_por_ano
   Top tracks:  track_name, duration_ms, explicit, num_artistas
 
 Notas:
-  - artist_albums: se usa sp._get("artists/{id}/albums") directamente
-    para evitar que spotipy añada country=None. Más fiable que search.
+  - Usa spotify_id del registry directamente, sin búsqueda por nombre.
   - audio_features: deprecado desde nov 2024, se omite.
   - artist_spotify_tracks: requiere OAuth de usuario, se sustituye por search.
+
+Uso:
+  python -m src.data_collectors.spotify_features
+  python -m src.data_collectors.spotify_features --force Dano "Rels B"
 """
 
 import os
+import sys
 import time
 import argparse
 import requests
@@ -31,26 +35,20 @@ from datetime import datetime
 
 load_dotenv()
 
-# ── Configuración ─────────────────────────────────────────────────────────────
-SPOTIFY_IDS_CSV  = Path("data/raw/spotify_ids.csv")
-DISCOGRAFIA_CSV  = Path("data/raw/spotify_discografia.csv")
-TOP_TRACKS_CSV   = Path("data/raw/spotify_tracks.csv")
+ROOT = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(ROOT))
+
+DISCOGRAFIA_CSV = ROOT / "data" / "raw" / "spotify_discografia.csv"
+TOP_TRACKS_CSV  = ROOT / "data" / "raw" / "spotify_tracks.csv"
 DISCOGRAFIA_CSV.parent.mkdir(parents=True, exist_ok=True)
 
-DELAY      = 0.5   # segundos entre llamadas a la API
+DELAY      = 0.5
 ANO_ACTUAL = datetime.now().year
 
 
-# ── Cliente Spotify ───────────────────────────────────────────────────────────
-sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
-    client_id=os.getenv("SPOTIFY_CLIENT_ID"),
-    client_secret=os.getenv("SPOTIFY_CLIENT_SECRET")
-))
-print("ok Cliente Spotify inicializado")
-
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
-def safe_call(fn, *args, retries=3, silent_4xx=True, **kwargs):
+
+def safe_call(sp, fn, *args, retries=3, silent_4xx=True, **kwargs):
     """Llama a la API con reintentos ante errores de red o rate limit."""
     for i in range(retries):
         try:
@@ -75,8 +73,8 @@ def safe_call(fn, *args, retries=3, silent_4xx=True, **kwargs):
     return None
 
 
-def _get_albums_page(artist_id: str, offset: int) -> dict | None:
-    """Obtiene una página de álbumes via requests con market (no country) y sin encode de comas."""
+def _get_albums_page(sp, artist_id: str, offset: int) -> dict | None:
+    """Obtiene una página de álbumes via requests con market y sin encode de comas."""
     token = sp.auth_manager.get_access_token(as_dict=False)
     url = (
         f"https://api.spotify.com/v1/artists/{artist_id}/albums"
@@ -92,7 +90,7 @@ def _get_albums_page(artist_id: str, offset: int) -> dict | None:
                 time.sleep(wait)
                 continue
             if r.status_code in (400, 403, 404):
-                print(f"  [albums error {r.status_code}] {r.text[:300]}")
+                print(f"  [albums error {r.status_code}] {r.text[:200]}")
                 return None
             r.raise_for_status()
             return r.json()
@@ -102,13 +100,12 @@ def _get_albums_page(artist_id: str, offset: int) -> dict | None:
     return None
 
 
-def get_discografia(artist_id: str, nombre: str) -> dict:
-    """Obtiene stats de discografía via artists/{id}/albums (endpoint directo por artist_id)."""
+def get_discografia(sp, artist_id: str, nombre: str) -> dict:
+    """Obtiene stats de discografía via artists/{id}/albums."""
     albums_raw, singles_raw, eps_raw = [], [], []
-
     offset = 0
     while True:
-        res = _get_albums_page(artist_id, offset)
+        res = _get_albums_page(sp, artist_id, offset)
         if not res:
             break
         items = res.get("items", [])
@@ -128,7 +125,6 @@ def get_discografia(artist_id: str, nombre: str) -> dict:
         offset += 50
         time.sleep(DELAY)
 
-    # Fechas de lanzamientos
     todas_fechas = [f for f in albums_raw + singles_raw + eps_raw if f]
     todas_fechas_dt = []
     for f in todas_fechas:
@@ -144,33 +140,32 @@ def get_discografia(artist_id: str, nombre: str) -> dict:
 
     primer_lanzamiento = min(todas_fechas_dt).strftime("%Y-%m-%d") if todas_fechas_dt else None
     ultimo_lanzamiento  = max(todas_fechas_dt).strftime("%Y-%m-%d") if todas_fechas_dt else None
-
-    anos_activo = None
-    releases_por_ano = None
+    anos_activo         = None
+    releases_por_ano    = None
     if todas_fechas_dt:
-        ano_inicio  = min(todas_fechas_dt).year
-        anos_activo = max(1, ANO_ACTUAL - ano_inicio)
-        num_total   = len(albums_raw) + len(singles_raw) + len(eps_raw)
+        ano_inicio       = min(todas_fechas_dt).year
+        anos_activo      = max(1, ANO_ACTUAL - ano_inicio)
+        num_total        = len(albums_raw) + len(singles_raw) + len(eps_raw)
         releases_por_ano = round(num_total / anos_activo, 2)
 
     return {
-        "num_albums":          len(albums_raw),
-        "num_singles":         len(singles_raw),
-        "num_eps":             len(eps_raw),
-        "num_total_releases":  len(albums_raw) + len(singles_raw) + len(eps_raw),
-        "primer_lanzamiento":  primer_lanzamiento,
-        "ultimo_lanzamiento":  ultimo_lanzamiento,
-        "anos_activo":         anos_activo,
-        "releases_por_ano":    releases_por_ano,
+        "num_albums":         len(albums_raw),
+        "num_singles":        len(singles_raw),
+        "num_eps":            len(eps_raw),
+        "num_total_releases": len(albums_raw) + len(singles_raw) + len(eps_raw),
+        "primer_lanzamiento": primer_lanzamiento,
+        "ultimo_lanzamiento": ultimo_lanzamiento,
+        "anos_activo":        anos_activo,
+        "releases_por_ano":   releases_por_ano,
     }
 
 
-def get_spotify_tracks(artist_id: str, nombre_artista: str) -> list[dict]:
+def get_spotify_tracks(sp, artist_id: str, nombre_artista: str) -> list[dict]:
     """Obtiene top tracks via search filtrado por artist_id."""
     tracks = []
     for query in [f'artist:"{nombre_artista}"', f"artist:{nombre_artista}"]:
         for limit in [10, 5]:
-            res = safe_call(sp.search, q=query, type="track", limit=limit, market="ES")
+            res = safe_call(sp, sp.search, q=query, type="track", limit=limit, market="ES")
             if res:
                 tracks = [
                     t for t in res.get("tracks", {}).get("items", [])
@@ -180,109 +175,113 @@ def get_spotify_tracks(artist_id: str, nombre_artista: str) -> list[dict]:
                     break
         if tracks:
             break
-    if not tracks:
-        return []
+    return [
+        {
+            "nombre_artista": nombre_artista,
+            "artist_id":      artist_id,
+            "track_id":       t.get("id"),
+            "track_name":     t.get("name"),
+            "album_name":     t.get("album", {}).get("name"),
+            "release_date":   t.get("album", {}).get("release_date"),
+            "duration_ms":    t.get("duration_ms"),
+            "explicit":       t.get("explicit"),
+            "num_artistas":   len(t.get("artists", [])),
+        }
+        for t in tracks[:10]
+    ]
 
-    filas = []
-    for track in tracks[:10]:
-        filas.append({
-            "nombre_artista":   nombre_artista,
-            "artist_id":        artist_id,
-            "track_id":         track.get("id"),
-            "track_name":       track.get("name"),
-            "album_name":       track.get("album", {}).get("name"),
-            "release_date":     track.get("album", {}).get("release_date"),
-            "duration_ms":      track.get("duration_ms"),
-            "explicit":         track.get("explicit"),
-            "num_artistas":     len(track.get("artists", [])),
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(description="Extrae features de Spotify por artista")
+    parser.add_argument("--force", nargs="+", metavar="ARTISTA",
+                        help="Re-procesar estos artistas aunque ya existan en los CSVs")
+    args = parser.parse_args()
+
+    from config.registry import cargar as cargar_registry
+    df_reg = cargar_registry()
+    df_ids = (
+        df_reg[df_reg["spotify_id"].notna()][["nombre_canonico", "spotify_id", "spotify_nombre"]]
+        .rename(columns={
+            "nombre_canonico": "nombre_buscado",
+            "spotify_id":      "artist_id",
+            "spotify_nombre":  "nombre_spotify",
         })
-
-    return filas
-
-
-# ── Cargar artistas ───────────────────────────────────────────────────────────
-parser = argparse.ArgumentParser(description="Extrae features de Spotify por artista")
-parser.add_argument("--force", nargs="+", metavar="ARTISTA",
-                    help="Re-procesar estos artistas aunque ya existan en los CSVs")
-args = parser.parse_args()
-
-df_ids = pd.read_csv(SPOTIFY_IDS_CSV)
-df_ids = df_ids[df_ids["artist_id"].notna()].reset_index(drop=True)
-
-# Carga incremental
-df_disc_existe   = pd.read_csv(DISCOGRAFIA_CSV) if DISCOGRAFIA_CSV.exists() else pd.DataFrame()
-df_tracks_existe = pd.read_csv(TOP_TRACKS_CSV)  if TOP_TRACKS_CSV.exists()  else pd.DataFrame()
-
-# Eliminar artistas forzados para re-procesarlos
-if args.force and not df_disc_existe.empty:
-    force_ids = set(
-        df_ids.loc[df_ids["nombre_buscado"].str.lower().isin(
-            {a.lower() for a in args.force}), "artist_id"]
+        .reset_index(drop=True)
     )
-    df_disc_existe   = df_disc_existe[~df_disc_existe["artist_id"].isin(force_ids)]
-    df_disc_existe.to_csv(DISCOGRAFIA_CSV, index=False, encoding="utf-8")
-    if not df_tracks_existe.empty:
-        df_tracks_existe = df_tracks_existe[~df_tracks_existe["artist_id"].isin(force_ids)]
-        df_tracks_existe.to_csv(TOP_TRACKS_CSV, index=False, encoding="utf-8")
-    print(f"Re-procesando artistas: {args.force}")
+    print(f"{len(df_ids)} artistas con Spotify ID en el registry")
 
-procesados = set(df_disc_existe["artist_id"]) if not df_disc_existe.empty else set()
+    sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
+        client_id=os.getenv("SPOTIFY_CLIENT_ID"),
+        client_secret=os.getenv("SPOTIFY_CLIENT_SECRET"),
+    ))
+    print("Cliente Spotify inicializado\n")
 
-nuevas_disc   = []
-nuevos_tracks = []
+    df_disc_existe   = pd.read_csv(DISCOGRAFIA_CSV) if DISCOGRAFIA_CSV.exists() else pd.DataFrame()
+    df_tracks_existe = pd.read_csv(TOP_TRACKS_CSV)  if TOP_TRACKS_CSV.exists()  else pd.DataFrame()
 
-print(f"\nProcesando {len(df_ids)} artistas...\n")
+    if args.force and not df_disc_existe.empty:
+        force_ids = set(
+            df_ids.loc[df_ids["nombre_buscado"].str.lower().isin(
+                {a.lower() for a in args.force}), "artist_id"]
+        )
+        df_disc_existe = df_disc_existe[~df_disc_existe["artist_id"].isin(force_ids)]
+        df_disc_existe.to_csv(DISCOGRAFIA_CSV, index=False, encoding="utf-8")
+        if not df_tracks_existe.empty:
+            df_tracks_existe = df_tracks_existe[~df_tracks_existe["artist_id"].isin(force_ids)]
+            df_tracks_existe.to_csv(TOP_TRACKS_CSV, index=False, encoding="utf-8")
+        print(f"Re-procesando: {args.force}")
 
-for i, row in df_ids.iterrows():
-    nombre         = row["nombre_buscado"]
-    nombre_spotify = row.get("nombre_spotify") or nombre
-    artist_id      = row["artist_id"]
+    procesados    = set(df_disc_existe["artist_id"]) if not df_disc_existe.empty else set()
+    nuevas_disc   = []
+    nuevos_tracks = []
+    total         = len(df_ids)
 
-    if artist_id in procesados:
-        print(f"  [{i+1}/{len(df_ids)}] Omitido (ya existe): {nombre}")
-        continue
+    for i, row in df_ids.iterrows():
+        nombre         = row["nombre_buscado"]
+        nombre_spotify = row.get("nombre_spotify") or nombre
+        artist_id      = row["artist_id"]
 
-    print(f"  [{i+1}/{len(df_ids)}] {nombre} ...", flush=True)
+        if artist_id in procesados:
+            print(f"  [{i+1}/{total}] Omitido (ya existe): {nombre}")
+            continue
 
-    # ── Discografía ───────────────────────────────────────────────────────────
-    disc = get_discografia(artist_id, nombre_spotify)
-    disc["nombre_buscado"] = nombre
-    disc["artist_id"]      = artist_id
-    nuevas_disc.append(disc)
-    print(f"    discografia: {disc['num_total_releases']} releases "
-          f"({disc['num_albums']} albums, {disc['num_singles']} singles) "
-          f"| ultimo: {disc['ultimo_lanzamiento']}")
+        print(f"  [{i+1}/{total}] {nombre} ...", flush=True)
 
-    time.sleep(DELAY)
+        disc = get_discografia(sp, artist_id, nombre_spotify)
+        disc["nombre_buscado"] = nombre
+        disc["artist_id"]      = artist_id
+        nuevas_disc.append(disc)
+        print(f"    discografia: {disc['num_total_releases']} releases | ultimo: {disc['ultimo_lanzamiento']}")
+        time.sleep(DELAY)
 
-    # ── Top tracks ────────────────────────────────────────────────────────────
-    tracks = get_spotify_tracks(artist_id, nombre_spotify)
-    nuevos_tracks.extend(tracks)
-    print(f"    top tracks: {len(tracks)} canciones")
+        tracks = get_spotify_tracks(sp, artist_id, nombre_spotify)
+        nuevos_tracks.extend(tracks)
+        print(f"    top tracks: {len(tracks)} canciones")
+        time.sleep(DELAY)
 
-    time.sleep(DELAY)
-
-# ── Guardar ───────────────────────────────────────────────────────────────────
-if nuevas_disc:
     cols_disc = ["nombre_buscado", "artist_id", "num_albums", "num_singles",
                  "num_eps", "num_total_releases", "primer_lanzamiento",
                  "ultimo_lanzamiento", "anos_activo", "releases_por_ano"]
-    df_disc_final = pd.concat(
-        [df_disc_existe, pd.DataFrame(nuevas_disc)[cols_disc]],
-        ignore_index=True
-    )
-    df_disc_final.to_csv(DISCOGRAFIA_CSV, index=False, encoding="utf-8")
-    print(f"\nOK {len(nuevas_disc)} artistas -> {DISCOGRAFIA_CSV}")
+    if nuevas_disc:
+        df_disc_final = pd.concat(
+            [df_disc_existe, pd.DataFrame(nuevas_disc)[cols_disc]],
+            ignore_index=True,
+        )
+        df_disc_final.to_csv(DISCOGRAFIA_CSV, index=False, encoding="utf-8")
+        print(f"\nOK {len(nuevas_disc)} artistas → {DISCOGRAFIA_CSV.name}")
 
-if nuevos_tracks:
-    df_tracks_final = pd.concat(
-        [df_tracks_existe, pd.DataFrame(nuevos_tracks)],
-        ignore_index=True
-    )
-    df_tracks_final.to_csv(TOP_TRACKS_CSV, index=False, encoding="utf-8")
-    print(f"OK {len(nuevos_tracks)} tracks -> {TOP_TRACKS_CSV}")
+    if nuevos_tracks:
+        df_tracks_final = pd.concat(
+            [df_tracks_existe, pd.DataFrame(nuevos_tracks)],
+            ignore_index=True,
+        )
+        df_tracks_final.to_csv(TOP_TRACKS_CSV, index=False, encoding="utf-8")
+        print(f"OK {len(nuevos_tracks)} tracks → {TOP_TRACKS_CSV.name}")
 
-# ── Resumen ───────────────────────────────────────────────────────────────────
-print(f"\nRESUMEN:")
-print(f"  Artistas procesados: {len(nuevas_disc)}")
-print(f"  Tracks extraidos:    {len(nuevos_tracks)}")
+    print(f"\nRESUMEN: {len(nuevas_disc)} artistas procesados | {len(nuevos_tracks)} tracks extraídos")
+
+
+if __name__ == "__main__":
+    main()
