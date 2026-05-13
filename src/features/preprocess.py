@@ -16,8 +16,8 @@ VARIABLES PREDICTORAS (X)
   Todas las features del CSV excepto las columnas de metadata/target y las
   features eliminadas en el EDA por baja señal (ver FEATURES_ELIMINAR).
 
-  Para modelos de árbol  → 30 features, sin escalar
-  Para regresión lineal  → 22 features (sin versiones raw cuando hay log), RobustScaler
+  Para modelos de árbol  → 32 features, sin escalar
+  Para regresión lineal  → 24 features (sin versiones raw cuando hay log), RobustScaler
 
 Uso:
   from src.features.preprocess import cargar_datos

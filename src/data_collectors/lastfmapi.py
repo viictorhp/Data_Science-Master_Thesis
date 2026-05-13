@@ -16,7 +16,6 @@ Uso:
 import os
 import sys
 import time
-import difflib
 import requests
 import pandas as pd
 from dotenv import load_dotenv
@@ -42,10 +41,6 @@ class LastFMCollector:
         r.raise_for_status()
         return r.json()
 
-    @staticmethod
-    def _similitud(a: str, b: str) -> float:
-        return difflib.SequenceMatcher(None, a.lower(), b.lower()).ratio()
-
     def obtener_info(self, nombre_lastfm: str) -> dict | None:
         """
         Obtiene datos completos de un artista usando su nombre exacto en Last.fm.
@@ -69,40 +64,6 @@ class LastFMCollector:
             }
         except Exception as e:
             print(f"  Error Last.fm para '{nombre_lastfm}': {e}")
-            return None
-
-    def buscar_artista(self, nombre: str, umbral: float = 0.6) -> dict | None:
-        """
-        Búsqueda por nombre con validación de similitud.
-        Usado por scripts/00_resolver_identidades.py para poblar el registry.
-        """
-        try:
-            busqueda = self._get({"method": "artist.search", "artist": nombre, "limit": 5})
-            candidatos = busqueda.get("results", {}).get("artistmatches", {}).get("artist", [])
-            if not candidatos:
-                return None
-            mejor = max(candidatos, key=lambda a: self._similitud(nombre, a["name"]))
-            score = self._similitud(nombre, mejor["name"])
-            if score < umbral:
-                print(f"  Match rechazado: '{nombre}' → '{mejor['name']}' ({score:.0%})")
-                return None
-            data = self._get({"method": "artist.getInfo", "artist": mejor["name"]})
-            if "error" in data:
-                return None
-            a    = data["artist"]
-            tags = [t["name"] for t in a.get("tags", {}).get("tag", [])]
-            return {
-                "nombre_buscado": nombre,
-                "nombre_lastfm":  a.get("name"),
-                "oyentes":        int(a.get("stats", {}).get("listeners", 0)),
-                "scrobbles":      int(a.get("stats", {}).get("playcount", 0)),
-                "generos":        ", ".join(tags) if tags else "Sin género",
-                "lastfm_url":     a.get("url"),
-                "mbid":           a.get("mbid", "") or None,
-                "match_score":    round(score, 2),
-            }
-        except Exception as e:
-            print(f"  Error al buscar '{nombre}': {e}")
             return None
 
 

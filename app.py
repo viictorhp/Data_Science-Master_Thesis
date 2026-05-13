@@ -26,8 +26,8 @@ st.divider()
 # ---------------------------------------------------------------------------
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Artistas en el dataset", "157")
-col2.metric("Accuracy del modelo", "68.1%")
-col3.metric("F1 macro", "67.5%")
+col2.metric("Accuracy del modelo", "67.5%")
+col3.metric("F1 macro", "66.9%")
 col4.metric("Features utilizadas", "32")
 
 st.divider()
