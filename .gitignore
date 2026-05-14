@@ -17,10 +17,6 @@ data/final/
 *.json
 *.html
 
-# Ficheros curados manualmente — se versionan aunque sean CSV/JSON
-!config/artistas_registry.csv
-!data/raw/artistas_labels.csv
-
 # Python
 __pycache__/
 *.py[cod]

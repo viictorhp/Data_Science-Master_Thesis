@@ -23,6 +23,7 @@ import pandas as pd
 from pathlib import Path
 
 RAW       = Path("data/raw")
+CONFIG    = Path("config")
 PROCESSED = Path("data/processed")
 HOY       = pd.Timestamp("today").normalize()
 
@@ -223,8 +224,18 @@ def _features_setlistfm(df: pd.DataFrame) -> pd.DataFrame:
 
 def build_artist_features() -> pd.DataFrame:
     """Carga todas las fuentes y devuelve la matriz de features con el target."""
-    labels = _load("artistas_labels.csv")[["nombre_buscado", "nivel", "tier_sala"]]
-    labels["target"] = labels["nivel"].map({"bajo": 1, "medio": 2, "alto": 3})
+    labels_path = CONFIG / "artistas_labels.csv"
+    if not labels_path.exists():
+        labels_path = RAW / "artistas_labels.csv"
+    labels = pd.read_csv(labels_path)[["nombre_buscado", "tier_sala"]]
+    n_before = len(labels)
+    labels = labels.dropna(subset=["tier_sala"])
+    dropped = n_before - len(labels)
+    if dropped:
+        print(f"  AVISO: {dropped} artistas sin tier_sala — excluidos del entrenamiento")
+    labels["tier_sala"] = labels["tier_sala"].astype(int)
+    labels["nivel"] = labels["tier_sala"].map({1: "bajo", 2: "medio", 3: "alto"})
+    labels["target"] = labels["tier_sala"]
 
     sources = [
         _features_spotify_discografia(_load("spotify_discografia.csv")),

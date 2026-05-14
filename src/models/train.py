@@ -29,15 +29,15 @@ SEED = 42
 
 # Hiperparámetros tuned — resultado de notebooks/03_hiperparametros.ipynb
 BEST_PARAMS = {
-    "subsample": 0.7,
+    "subsample": 0.9,
     "reg_lambda": 2.0,
     "reg_alpha": 1.0,
     "n_estimators": 400,
-    "min_child_weight": 5,
-    "max_depth": 4,
+    "min_child_weight": 10,
+    "max_depth": 2,
     "learning_rate": 0.01,
-    "gamma": 0.1,
-    "colsample_bytree": 0.6,
+    "gamma": 0.5,
+    "colsample_bytree": 0.5,
 }
 
 

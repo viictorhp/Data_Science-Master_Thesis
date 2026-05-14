@@ -115,7 +115,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--artists",  default="artistas.txt")
     parser.add_argument("--setlists", default="data/raw/setlistfm_conciertos.csv")
-    parser.add_argument("--output",   default="data/raw/artistas_labels.csv")
+    parser.add_argument("--output",   default="config/artistas_labels.csv")
     args = parser.parse_args()
 
     # ── Cargar artistas ───────────────────────────────────────────────────────

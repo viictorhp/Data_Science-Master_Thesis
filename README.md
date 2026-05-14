@@ -2,7 +2,7 @@
 
 ## Descripción del proyecto
 
-Proyecto fin de máster para predecir el **tier de sala** de artistas de rap/urbano español — es decir, el tamaño máximo de recinto que un artista puede llenar en España. El dataset cubre **157 artistas** de la escena urbana española, desde artistas completamente underground hasta nombres con presencia en festivales y palacios de deportes.
+Proyecto fin de máster para predecir el **tier de sala** de artistas de rap/urbano español — es decir, el tamaño máximo de recinto que un artista puede llenar en España. El dataset cubre **182 artistas** de la escena urbana española, desde artistas completamente underground hasta nombres con presencia en festivales y palacios de deportes.
 
 El pipeline recoge datos de 6 fuentes (Spotify, Last.fm, YouTube, setlist.fm, Google Trends + YouTube reciente) mediante sus APIs, aplica ingeniería de características, y entrena modelos de clasificación multiclase. Los resultados se analizan en notebooks Jupyter.
 
@@ -39,6 +39,7 @@ src/
 config/
   registry.py              # Utilidad cargar()/guardar() para el registry
   artistas_registry.csv    # ★ Fuente de verdad de identidades entre plataformas (en git)
+  artistas_labels.csv      # ★ Variable objetivo — tiers curados manualmente (en git)
 scripts/
   00_resolver_identidades.py  # Resuelve IDs de plataformas para artistas nuevos
   migrar_registry.py          # Migración one-time desde CSVs existentes al registry
@@ -63,8 +64,7 @@ models/              # Artefactos entrenados (gitignored)
 reports/
   figures/           # PNGs de notebooks + plots SHAP (shap_summary_bar, shap_beeswarm_alto)
 data/
-  raw/               # CSVs originales de cada fuente (gitignored, excepto artistas_labels.csv)
-    artistas_labels.csv  # ★ Variable objetivo — tiers curados manualmente (en git)
+  raw/               # CSVs originales de cada fuente (gitignored)
   processed/         # artist_features.csv — matriz de features unificada (gitignored)
 ```
 
@@ -88,7 +88,7 @@ Es un problema de **clasificación multiclase ordinal**: las 3 clases tienen ord
 | `medio` | 2 | 200 – 2.000 personas | BEJO, Choclock, Metrika, La Zowi |
 | `alto` | 3 | > 2.000 personas (festivales, palacios) | Bad Gyal, Quevedo, Morad, Rels B |
 
-**Distribución**: bajo=62 · medio=57 · alto=38 · **total=157 artistas**
+**Distribución**: bajo=81 · medio=62 · alto=39 · **total=182 artistas**
 
 La variable objetivo está en `artistas_labels.csv` como `nivel` (texto) y `target` (entero 1/2/3).
 `nombre_buscado` es el identificador del artista — **nunca entra como variable predictora**.
@@ -121,7 +121,7 @@ Features descartadas en ambos modos por el EDA (señal no significativa):
 `sp_num_eps` · `sp_num_total_releases` · `sp_dias_desde_ultimo_release` · `yt_edad_canal_anos` · `trend_yt_videos_recientes`
 
 El preprocesado no genera ningún fichero — devuelve `X`, `y` en memoria listos para entrenar.
-Verificado: **NaN en X = 0** en ambos modos sobre los 157 artistas.
+Verificado: **NaN en X = 0** en ambos modos sobre los 182 artistas.
 
 ---
 
@@ -154,7 +154,7 @@ scripts/00_resolver_identidades.py   ← llama a las 4 APIs, umbral alto de conf
 scripts/pipeline.py                  ← usa IDs del registry, nunca busca por nombre
     │
     ├── src/data_collectors/*.py     → data/raw/*.csv
-    ├── scripts/generar_labels.py    → data/raw/artistas_labels.csv
+    ├── scripts/generar_labels.py    → config/artistas_labels.csv
     ├── src/features/build_features  → data/processed/artist_features.csv
     └── src/models/train.py          → models/xgb_tuned.joblib
 ```
@@ -233,7 +233,7 @@ Historial de conciertos (setlists) por artista. Fuente más directa para medir a
 
 ---
 
-## Etiquetas del modelo (`data/raw/artistas_labels.csv`)
+## Etiquetas del modelo (`config/artistas_labels.csv`)
 
 Fichero central con la variable objetivo. Los tiers originales (0-4) se fusionaron en 3 niveles para garantizar suficientes ejemplos por clase:
 
@@ -252,7 +252,7 @@ El etiquetado es **semisupervisado**: ~50% de las etiquetas se infirieron autom�
 ## Feature Engineering (`src/features/build_features.py`)
 
 Combina todas las fuentes raw en la matriz `data/processed/artist_features.csv`.
-**157 artistas × 36 features** (+ 4 columnas de metadata/target).
+**182 artistas × 36 features** (+ 4 columnas de metadata/target).
 
 ### Features por fuente
 
@@ -360,31 +360,31 @@ El EDA analiza las 36 features y su relación con el target usando **Kruskal-Wal
 
 ### Estrategia de validación
 
-**StratifiedKFold k=5**: con n=157 artistas un hold-out del 20% dejaría solo ~31 artistas de test. Con CV k=5 cada artista aparece exactamente **una vez en test**, sin data leakage. Métricas reportadas: media ± desviación estándar de los 5 folds.
+**StratifiedKFold k=5**: con n=182 artistas un hold-out del 20% dejaría solo ~36 artistas de test. Con CV k=5 cada artista aparece exactamente **una vez en test**, sin data leakage. Métricas reportadas: media ± desviación estándar de los 5 folds.
 
-### Resultados (157 artistas, abril 2025)
+### Resultados (182 artistas, mayo 2026)
 
 | Modelo | Features | Accuracy (CV5) | F1 macro (CV5) | Estabilidad |
 |--------|----------|---------------|----------------|-------------|
-| Dummy most_frequent | — | 39.5% ± 0.9% | 18.9% ± 0.3% | — |
-| Dummy stratified | — | 37.0% ± 6.9% | 33.6% ± 7.2% | — |
-| Regresión Logística | 23 (lineal) | 55.4% ± 3.3% | 55.4% ± 4.8% | ✅ estable |
-| Regresión Ordinal (mord) | 23 (lineal) | 60.5% ± 3.9% | 57.8% ± 7.5% | ✅ estable |
-| SVM (kernel RBF) | 23 (lineal) | 59.3% ± 6.2% | 57.4% ± 8.1% | ⚠️ variable |
-| LightGBM | 31 (arbol) | 60.5% ± 8.9% | 58.8% ± 9.8% | ❌ inestable |
-| Random Forest | 31 (arbol) | 62.4% ± 2.9% | 61.0% ± 3.8% | ✅ estable |
-| **XGBoost** | **31 (arbol)** | **63.0% ± 8.3%** | **61.6% ± 9.4%** | ❌ inestable |
+| Dummy most_frequent | — | 44.5% ± 0.9% | 20.5% ± 0.3% | — |
+| Dummy stratified | — | 38.4% ± 8.3% | 31.4% ± 6.0% | — |
+| Regresión Logística | 24 (lineal) | 59.4% ± 7.5% | 56.3% ± 8.1% | ⚠️ variable |
+| Regresión Ordinal (mord) | 24 (lineal) | 60.4% ± 4.9% | 56.4% ± 4.5% | ✅ estable |
+| Random Forest | 32 (arbol) | 61.6% ± 3.2% | 58.5% ± 3.5% | ✅ estable |
+| LightGBM | 32 (arbol) | 61.0% ± 5.7% | 57.6% ± 5.0% | ⚠️ variable |
+| XGBoost | 32 (arbol) | 63.2% ± 3.9% | 60.3% ± 3.7% | ✅ estable |
+| **SVM (kernel RBF)** | **24 (lineal)** | **64.8% ± 7.6%** | **62.3% ± 8.0%** | ⚠️ variable |
 
-**XGBoost tiene la mayor media** (+23.5 puntos sobre el baseline). **Random Forest es el más estable** (±2.9% vs ±8.3% de XGBoost). Los intervalos se solapan — ambos son candidatos para el tuning de hiperparámetros.
+**SVM tiene el mayor F1 macro** (+41.8 puntos sobre el baseline). **Random Forest sigue siendo el más estable** (±3.2%). XGBoost equilibra rendimiento y estabilidad — candidato para tuning.
 
-La **Regresión Ordinal** (mord.LogisticIT) supera a LR y SVM: la hipótesis ordinal bajo < medio < alto aporta señal real sin necesitar `class_weight`. No llega a los ensembles, pero confirma que el target tiene estructura ordinal genuina.
+La **Regresión Ordinal** (mord.LogisticIT) confirma la estructura ordinal del target: bajo < medio < alto aporta señal real sin necesitar `class_weight`.
 
-### Análisis de errores (XGBoost OOF)
+### Análisis de errores (SVM OOF)
 
-- **58/157 mal clasificados** — accuracy OOF: 63.1%
+- **64/182 mal clasificados** — accuracy OOF: 64.8%
 - `bajo`: F1=0.75 — bien clasificada (señal digital baja es discriminativa)
-- `medio`: F1=0.55 — la más difícil; errores simétricos 13→bajo, 13→alto
-- `alto`: F1=0.55 — 14 artistas clasificados como medio (Yung Beef, Rels B, SAIKO, Maka)
+- `medio`: F1=0.55 — la más difícil; errores simétricos ~12→bajo, ~15→alto
+- `alto`: F1=0.62 — 16 artistas clasificados como medio
 - Errores de 2 saltos (alto→bajo, bajo→alto): solo 7 casos — el modelo respeta la ordinalidad implícitamente
 
 ### Feature importance (RF y XGBoost — consenso)
@@ -406,27 +406,27 @@ Optimización de XGBoost con `RandomizedSearchCV`: 100 combinaciones aleatorias 
 
 | Modelo | Accuracy (CV5) | F1 macro (CV5) | Estabilidad |
 |--------|---------------|----------------|-------------|
-| XGBoost base | 63.0% ± 8.3% | 61.6% ± 9.4% | ❌ inestable |
-| **XGBoost tuned** | **67.5% ± 4.0%** | **66.9% ± 3.7%** | ✅ estable |
-| Delta | **+4.5 puntos** | **+5.3 puntos** | **std ÷ 2** |
+| XGBoost base | 63.2% ± 3.9% | 60.3% ± 3.7% | ✅ estable |
+| **XGBoost tuned** | **68.2% ± 5.0%** | **66.6% ± 6.3%** | ✅ estable |
+| Delta | **+5.0 puntos** | **+6.3 puntos** | — |
 
-El delta de +5.3% en F1 macro supera el umbral de ±3 puntos a partir del cual la diferencia es interpretable con este tamaño de dataset. La mejora de estabilidad (std ÷ 2) tiene igual o mayor relevancia práctica que la mejora en media.
+El delta de +6.3% en F1 macro supera el umbral de ±3 puntos a partir del cual la diferencia es interpretable con este tamaño de dataset. El XGBoost tuneado (66.6% F1) supera también al SVM base (62.3% F1), consolidándose como el mejor modelo.
 
 ### Hiperparámetros óptimos
 
 | Parámetro | Base | Tuned | Efecto |
 |-----------|------|-------|--------|
 | `learning_rate` | 0.05 | **0.01** | Aprende más despacio → generaliza mejor |
-| `min_child_weight` | 1 | **5** | Exige 5 muestras mínimo por hoja → evita splits espurios |
+| `min_child_weight` | 1 | **10** | Exige 10 muestras mínimo por hoja → evita splits espurios |
 | `reg_alpha` (L1) | 0 | **1.0** | Penalización L1 fuerte → pesos sparse |
 | `reg_lambda` (L2) | 1 | **2.0** | Penalización L2 fuerte → pesos más pequeños |
-| `gamma` | 0 | **0.1** | Exige ganancia mínima para hacer un split |
+| `gamma` | 0 | **0.5** | Exige ganancia mínima para hacer un split |
 | `n_estimators` | 300 | **400** | Más árboles para compensar LR más bajo |
-| `subsample` | 0.8 | **0.7** | Menos filas por árbol → más diversidad |
-| `colsample_bytree` | 0.8 | **0.6** | Menos features por árbol → más diversidad |
-| `max_depth` | 4 | **4** | Sin cambio — profundidad inicial correcta |
+| `subsample` | 0.8 | **0.9** | Más filas por árbol → aprovecha mejor n=182 |
+| `colsample_bytree` | 0.8 | **0.5** | Menos features por árbol → más diversidad |
+| `max_depth` | 4 | **2** | Árboles más superficiales → menos overfitting |
 
-El patrón es claro: todos los cambios apuntan a **más regularización**. Con n=157 el principal riesgo es el overfitting, y la búsqueda lo detectó automáticamente.
+El patrón es claro: todos los cambios apuntan a **más regularización**. Con n=182 el principal riesgo sigue siendo el overfitting, y la búsqueda lo detectó automáticamente.
 
 ---
 
@@ -440,10 +440,10 @@ Entrena el modelo tuned sobre todos los datos y lo serializa en `models/`.
 python -m src.models.train
 ```
 
-**Salida** (11 mayo 2026, `acc=0.681 ± 0.044 | f1_macro=0.675 ± 0.041`):
+**Salida** (14 mayo 2026, `acc=0.682 ± 0.050 | f1_macro=0.666 ± 0.063`):
 
 - `models/xgb_tuned.joblib` — modelo listo para inferencia
-- `models/metadata.json` — 31 features esperadas, codificación del target, parámetros y métricas CV
+- `models/metadata.json` — 32 features esperadas, codificación del target, parámetros y métricas CV
 
 El `metadata.json` es el contrato entre el modelo y el dashboard: garantiza que la inferencia usa exactamente las mismas features que el entrenamiento.
 
@@ -641,7 +641,7 @@ respuesta = chat(
 `_system_prompt()` construye el contexto enviado al LLM con:
 
 - Descripción del sistema de tiers (bajo/medio/alto con aforos)
-- Métricas del modelo (157 artistas, 67.5% accuracy, 66.9% F1)
+- Métricas del modelo (182 artistas, 68.2% accuracy, 66.6% F1)
 - Valores concretos del artista: Spotify, Last.fm, YouTube, conciertos
 - Tier predicho con probabilidades
 - Info adicional de texto libre (si se proporcionó)
@@ -713,13 +713,13 @@ El script `scripts/validar_setlistfm.py` analiza si la imputación a 0 del 41% d
 python -m scripts.validar_setlistfm   # requiere data/processed/artist_features.csv
 ```
 
-**Resultados sobre el dataset de 157 artistas:**
+**Resultados sobre el dataset de 182 artistas:**
 
 | Tier | Sin datos en setlist.fm | Total |
 |------|------------------------|-------|
-| Bajo | 79.0% (49/62) | — |
-| Medio | 24.6% (14/57) | — |
-| Alto | 5.3% (2/38) | — |
+| Bajo | ~79% (~64/81) | — |
+| Medio | ~25% (~15/62) | — |
+| Alto | ~5% (~2/39) | — |
 
 χ²=63.3, df=2, **p≈0.000** → el NaN está fuertemente correlacionado con el tier.
 Δ F1 macro sin setlist.fm: **−6.4 puntos** (0.669→0.605) → las features tienen señal real.

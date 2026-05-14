@@ -108,7 +108,7 @@ def main():
         ]
 
         for modulo, desc in pasos:
-            if not run(modulo.split("."), desc):
+            if not run([modulo], desc):
                 sys.exit(1)
 
         # YouTube con batch opcional
