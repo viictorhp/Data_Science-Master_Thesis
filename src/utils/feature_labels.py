@@ -154,7 +154,9 @@ def detectar_alertas(features: dict, nivel: str, proba: dict) -> list[dict]:
 
     # ── Baja confianza ────────────────────────────────────────────────────────
     if conf < 0.45:
-        segundo = sorted(proba.items(), key=lambda x: x[1], reverse=True)[1]
+        adyacentes = {"bajo": ["medio"], "medio": ["bajo", "alto"], "alto": ["medio"]}
+        candidatos = {k: v for k, v in proba.items() if k in adyacentes[nivel]}
+        segundo = max(candidatos.items(), key=lambda x: x[1])
         alertas.append({
             "tipo": "warning",
             "msg": (
