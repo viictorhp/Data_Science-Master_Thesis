@@ -1,0 +1,61 @@
+{
+  "trained_at": "2026-05-18T18:09:53.744470",
+  "n_samples": 182,
+  "n_features": 32,
+  "features": [
+    "sp_num_albums",
+    "sp_num_singles",
+    "sp_anos_activo",
+    "sp_releases_por_ano",
+    "sp_ratio_albums_singles",
+    "sp_avg_duration_ms",
+    "sp_pct_explicit",
+    "sp_pct_colabs",
+    "lfm_oyentes",
+    "lfm_oyentes_log",
+    "lfm_scrobbles",
+    "lfm_scrobbles_log",
+    "lfm_scrobbles_por_oyente",
+    "lfm_num_generos",
+    "yt_suscriptores",
+    "yt_suscriptores_log",
+    "yt_vistas_totales",
+    "yt_vistas_log",
+    "yt_num_videos",
+    "yt_vistas_por_video",
+    "yt_vistas_por_suscriptor",
+    "sl_avg_canciones",
+    "sl_pct_encore",
+    "sl_num_paises",
+    "sl_num_conciertos",
+    "sl_pct_espana",
+    "trend_gtrends_interes_medio",
+    "trend_gtrends_log",
+    "trend_yt_vistas_recientes",
+    "trend_yt_vistas_recientes_log",
+    "trend_yt_vistas_por_video_reciente",
+    "sl_tiene_datos"
+  ],
+  "target_encoding": {
+    "0": "bajo",
+    "1": "medio",
+    "2": "alto"
+  },
+  "params": {
+    "subsample": 0.9,
+    "reg_lambda": 2.0,
+    "reg_alpha": 1.0,
+    "n_estimators": 400,
+    "min_child_weight": 10,
+    "max_depth": 2,
+    "learning_rate": 0.01,
+    "gamma": 0.5,
+    "colsample_bytree": 0.5
+  },
+  "cv5_metrics": {
+    "acc_mean": 0.6815315315315316,
+    "acc_std": 0.0498362802183025,
+    "f1_mean": 0.6663772688643379,
+    "f1_std": 0.0629415028793549
+  }
+}

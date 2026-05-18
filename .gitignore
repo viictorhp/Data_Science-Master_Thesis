@@ -42,6 +42,8 @@ Thumbs.db
 # Modelos
 models/*.pkl
 models/*.joblib
+!models/xgb_tuned.joblib
+!models/metadata.json
 
 .cache
 .spotify_cache
