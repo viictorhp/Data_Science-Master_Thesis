@@ -58,14 +58,14 @@ tests/               # Suite de tests — 114 tests, 114 passed
   test_predict.py    # Tests de construir_features() y predecir()
   test_shap_explainer.py   # Tests de shap_waterfall_fig() y constantes
 pytest.ini           # Configuración de pytest
-models/              # Artefactos entrenados (gitignored)
+models/              # Artefactos entrenados (en git)
   xgb_tuned.joblib   # Modelo XGBoost serializado con joblib
   metadata.json      # Features, parámetros, métricas CV y timestamp del entrenamiento
 reports/
   figures/           # PNGs de notebooks + plots SHAP (shap_summary_bar, shap_beeswarm_alto)
 data/
   raw/               # CSVs originales de cada fuente (gitignored)
-  processed/         # artist_features.csv — matriz de features unificada (gitignored)
+  processed/         # artist_features.csv — matriz de features unificada (en git)
 ```
 
 ---

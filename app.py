@@ -77,5 +77,5 @@ st.markdown("""
 | 2 | **Medio** | 200 – 2.000 personas | Planta Baja, La Riviera, Razzmatazz |
 | 3 | **Alto** | > 2.000 personas | WiZink, Movistar Arena, festivales |
 
-**Distribución del dataset**: bajo = 85 artistas · medio = 65 · alto = 32 · **total = 182**
+**Distribución del dataset**: bajo = 81 artistas · medio = 62 · alto = 39 · **total = 182**
 """)
