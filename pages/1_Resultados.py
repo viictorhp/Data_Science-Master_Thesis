@@ -10,13 +10,13 @@ st.set_page_config(
 FIGURES = Path("reports/figures")
 
 st.title("📊 Resultados del proyecto")
-st.caption("Benchmark de modelos · StratifiedKFold k=5 · 157 artistas")
+st.caption("Benchmark de modelos · StratifiedKFold k=5 · 182 artistas")
 
 # ---------------------------------------------------------------------------
 # 1. Benchmark de modelos
 # ---------------------------------------------------------------------------
 st.subheader("1. Comparativa de modelos")
-st.caption("Todos los modelos evaluados con CV5 estratificado sobre los 157 artistas.")
+st.caption("Todos los modelos evaluados con CV5 estratificado sobre los 182 artistas.")
 
 st.image(str(FIGURES / "comparativa_modelos.png"), width='stretch')
 
@@ -44,16 +44,16 @@ st.caption("RandomizedSearchCV · 100 iteraciones × CV5 = 500 fits · optimizad
 st.image(str(FIGURES / "xgb_base_vs_tuned.png"), width='stretch')
 
 col1, col2, col3 = st.columns(3)
-col1.metric("Accuracy",  "67.5%", "+4.5 pts vs base")
-col2.metric("F1 macro",  "66.9%", "+5.3 pts vs base")
-col3.metric("Std F1",    "±3.7%", "-5.7 pts vs base", delta_color="inverse")
+col1.metric("Accuracy",  "68.2%", "+5.0 pts vs base")
+col2.metric("F1 macro",  "66.6%", "+6.3 pts vs base")
+col3.metric("Std F1",    "±6.3%", "+2.6 pts vs base", delta_color="inverse")
 
 st.markdown("""
-**Parámetros clave del modelo tuned**: `learning_rate=0.01` · `min_child_weight=5` ·
-`reg_alpha=1.0` · `reg_lambda=2.0` · `n_estimators=400` · `max_depth=4`
+**Parámetros clave del modelo tuned**: `learning_rate=0.01` · `min_child_weight=10` ·
+`reg_alpha=1.0` · `reg_lambda=2.0` · `n_estimators=400` · `max_depth=2`
 
 > Todos los cambios apuntan a **más regularización** — el modelo tuned es más conservador
-> y estable, ideal para un dataset de 157 artistas.
+> y estable, ideal para un dataset de 182 artistas.
 """)
 
 st.divider()

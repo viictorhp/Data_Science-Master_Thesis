@@ -234,8 +234,8 @@ def build_artist_features() -> pd.DataFrame:
     if dropped:
         print(f"  AVISO: {dropped} artistas sin tier_sala — excluidos del entrenamiento")
     labels["tier_sala"] = labels["tier_sala"].astype(int)
-    labels["nivel"] = labels["tier_sala"].map({1: "bajo", 2: "medio", 3: "alto"})
-    labels["target"] = labels["tier_sala"]
+    labels["nivel"] = labels["tier_sala"].map({1: "bajo", 2: "medio", 3: "alto", 4: "alto"})
+    labels["target"] = labels["nivel"].map({"bajo": 1, "medio": 2, "alto": 3})
 
     sources = [
         _features_spotify_discografia(_load("spotify_discografia.csv")),

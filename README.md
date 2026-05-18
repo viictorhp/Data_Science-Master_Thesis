@@ -51,7 +51,7 @@ notebooks/           # Análisis exploratorio y modelado
   01_eda.ipynb       # EDA completo con Kruskal-Wallis y correlaciones
   02_modelado.ipynb  # Entrenamiento y comparativa de modelos
   03_hiperparametros.ipynb  # Ajuste de hiperparámetros XGBoost con RandomizedSearchCV
-tests/               # Suite de tests — 100 tests, 100 passed
+tests/               # Suite de tests — 114 tests, 114 passed
   conftest.py        # Fixtures compartidos (DataFrames en memoria, mock del modelo)
   test_build_features.py   # Tests de las 6 funciones _features_*()
   test_preprocess.py # Tests de _imputar() y cargar_datos()
@@ -584,7 +584,7 @@ st.session_state["prediccion"] = {
 
 ## Tests (`tests/`)
 
-Suite completa de tests unitarios. **100 tests, 100 passed** en ~10 segundos. Todos los tests son independientes del modelo serializado y los datos reales (gitignoreados): usan DataFrames en memoria y mocks de XGBClassifier.
+Suite completa de tests unitarios. **114 tests, 114 passed** en ~10 segundos. Todos los tests son independientes del modelo serializado y los datos reales (gitignoreados): usan DataFrames en memoria y mocks de XGBClassifier.
 
 ```bash
 pytest tests/          # ejecutar la suite completa

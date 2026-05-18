@@ -25,9 +25,9 @@ st.divider()
 # Métricas de resumen
 # ---------------------------------------------------------------------------
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Artistas en el dataset", "157")
-col2.metric("Accuracy del modelo", "67.5%")
-col3.metric("F1 macro", "66.9%")
+col1.metric("Artistas en el dataset", "182")
+col2.metric("Accuracy del modelo", "68.2%")
+col3.metric("F1 macro", "66.6%")
 col4.metric("Features utilizadas", "32")
 
 st.divider()
@@ -77,5 +77,5 @@ st.markdown("""
 | 2 | **Medio** | 200 – 2.000 personas | Planta Baja, La Riviera, Razzmatazz |
 | 3 | **Alto** | > 2.000 personas | WiZink, Movistar Arena, festivales |
 
-**Distribución del dataset**: bajo = 62 artistas · medio = 57 · alto = 38 · **total = 157**
+**Distribución del dataset**: bajo = 85 artistas · medio = 65 · alto = 32 · **total = 182**
 """)
