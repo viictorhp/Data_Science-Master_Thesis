@@ -10,10 +10,13 @@ ENV/
 
 # Datos
 data/raw/*
-data/processed/
+data/processed/*
 data/features/
 data/final/
 *.csv
+!config/artistas_labels.csv
+!config/artistas_registry.csv
+!data/processed/artist_features.csv
 *.json
 *.html
 
