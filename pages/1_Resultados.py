@@ -10,7 +10,7 @@ import streamlit as st
 
 from styles import (
     inject_styles, page_header, brand_block,
-    section_label, divider, tier_chip, PALETTE,
+    section_label, divider, PALETTE,
 )
 
 st.set_page_config(page_title="Resultados · TFM", page_icon="📊", layout="wide")
@@ -70,15 +70,15 @@ st.image(str(FIGURES / "comparativa_modelos.png"), use_container_width=True)
 st.markdown("""
 | Modelo | Features | Accuracy CV5 | F1 macro CV5 | Estabilidad |
 |--------|----------|--------------|--------------|-------------|
-| Dummy `most_frequent`     | —            | 39.5 % ± 0.9 % | 18.9 % ± 0.3 %  | — |
-| Dummy `stratified`        | —            | 37.0 % ± 6.9 % | 33.6 % ± 7.2 %  | — |
-| Regresión Logística       | 23 lineal    | 55.4 % ± 3.3 % | 55.4 % ± 4.8 %  | ✓ |
-| Regresión Ordinal (mord)  | 23 lineal    | 60.5 % ± 3.9 % | 57.8 % ± 7.5 %  | ✓ |
-| SVM (RBF)                 | 23 lineal    | 59.3 % ± 6.2 % | 57.4 % ± 8.1 %  | ⚠ |
-| LightGBM                  | 31 árbol     | 60.5 % ± 8.9 % | 58.8 % ± 9.8 %  | ✗ |
-| Random Forest             | 31 árbol     | 62.4 % ± 2.9 % | 61.0 % ± 3.8 %  | ✓ |
-| **XGBoost (base)**        | **31 árbol** | **63.0 % ± 8.3 %** | **61.6 % ± 9.4 %** | ✗ |
-| **XGBoost (tuned)** 🏆    | **31 árbol** | **68.2 % ± 6.7 %** | **66.6 % ± 6.3 %** | ✓ |
+| Dummy `most_frequent`     | —            | 39.5 % ± 0.9 % | 18.9 % ± 0.3 %  | —  |
+| Dummy `stratified`        | —            | 37.0 % ± 6.9 % | 33.6 % ± 7.2 %  | —  |
+| Regresión Logística       | 23 lineal    | 55.4 % ± 3.3 % | 55.4 % ± 4.8 %  | ✅ |
+| Regresión Ordinal (mord)  | 23 lineal    | 60.5 % ± 3.9 % | 57.8 % ± 7.5 %  | ✅ |
+| SVM (RBF)                 | 23 lineal    | 59.3 % ± 6.2 % | 57.4 % ± 8.1 %  | ⚠️ |
+| LightGBM                  | 31 árbol     | 60.5 % ± 8.9 % | 58.8 % ± 9.8 %  | ❌ |
+| Random Forest             | 31 árbol     | 62.4 % ± 2.9 % | 61.0 % ± 3.8 %  | ✅ |
+| **XGBoost (base)**        | **31 árbol** | **63.0 % ± 8.3 %** | **61.6 % ± 9.4 %** | ❌ |
+| **XGBoost (tuned)** 🏆    | **31 árbol** | **68.2 % ± 6.7 %** | **66.6 % ± 6.3 %** | ✅ |
 """)
 
 divider()

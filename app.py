@@ -12,7 +12,7 @@ La lógica de modelo es la misma del proyecto original — sólo cambia la UI.
 import streamlit as st
 from styles import (
     inject_styles, page_header, hero, nav_card,
-    brand_block, section_label, divider,
+    brand_block, section_label, divider, tier_chip,
 )
 
 st.set_page_config(
@@ -139,14 +139,34 @@ divider()
 # El problema — tabla de tiers
 # ---------------------------------------------------------------------------
 section_label("El problema", icon="diamond")
-st.markdown("""
-Tres tiers de sala definidos por aforo y contexto del circuito urbano español.
+st.markdown("Tres tiers de sala definidos por aforo y contexto del circuito urbano español.")
 
-| Tier | Nivel | Aforo | Ejemplos representativos | n |
-|------|-------|-------|--------------------------|---|
-| 🔻 **01** | **Bajo**  | `< 200 personas`     | Sala Víbora, locales pequeños, artistas sin sala propia | **81** |
-| ➖ **02** | **Medio** | `200 – 2 000`        | Planta Baja, La Riviera, Razzmatazz                     | **62** |
-| 🔺 **03** | **Alto**  | `> 2 000`            | WiZink, Movistar Arena, festivales (Sonorama, RBF…)     | **39** |
+TIERS_INFO = [
+    ("bajo",  "01", "< 200 personas",  "Sala Víbora, locales pequeños, artistas sin sala propia", "81"),
+    ("medio", "02", "200 – 2 000",     "Planta Baja, La Riviera, Razzmatazz",                     "62"),
+    ("alto",  "03", "> 2 000",         "WiZink, Movistar Arena, festivales (Sonorama, RBF…)",     "39"),
+]
+for nivel, num, aforo, ejemplos, n in TIERS_INFO:
+    st.markdown(
+        f"""
+        <div style="display:grid;grid-template-columns:120px 110px 1fr auto;
+                    align-items:center;gap:16px;
+                    background:var(--surface);border:1px solid var(--line);
+                    border-radius:14px;padding:14px 18px;margin-bottom:8px;">
+          {tier_chip(nivel)}
+          <span style="font-family:'JetBrains Mono';font-size:11px;color:#7A7290;">
+            {num} · {aforo}
+          </span>
+          <span style="font-size:13px;color:#B6ADCB;">{ejemplos}</span>
+          <span style="font-family:'JetBrains Mono';font-size:13px;font-weight:600;
+                       color:#F2EEFA;text-align:right;">n={n}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-> **Distribución total**: 182 artistas · clase mayoritaria 44.5 % (referencia para baseline).
-""")
+st.markdown(
+    '<p style="font-family:\'JetBrains Mono\';font-size:11px;color:#7A7290;margin-top:6px;">'
+    '182 artistas · clase mayoritaria 44.5 % (referencia para baseline).</p>',
+    unsafe_allow_html=True,
+)

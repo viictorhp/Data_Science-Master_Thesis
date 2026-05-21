@@ -14,7 +14,7 @@ from src.utils.log_streamlit import log, render_sidebar_log, reset_prediccion
 
 from styles import (
     inject_styles, page_header, brand_block, section_label, divider,
-    tier_chip, TIER_COLOR, PALETTE,
+    TIER_COLOR, PALETTE,
 )
 
 st.set_page_config(page_title="Análisis IA · TFM", page_icon="🤖", layout="wide")

@@ -9,6 +9,7 @@ import sys
 sys.path.insert(0, '.')
 
 import matplotlib.pyplot as plt
+import pandas as pd
 import streamlit as st
 
 from src.models.predict import construir_features, predecir, _cargar_modelo
@@ -20,7 +21,7 @@ from src.utils.feature_labels import (
 
 from styles import (
     inject_styles, page_header, brand_block, section_label, divider,
-    tier_chip, result_disc, TIER_COLOR, TIER_DESC, PALETTE,
+    result_disc, TIER_COLOR, TIER_DESC, PALETTE,
 )
 
 st.set_page_config(page_title="Predicción · TFM", page_icon="🎤", layout="wide")
@@ -46,8 +47,27 @@ st.markdown(
 )
 
 
-def _src_header(icon: str, title: str, color_hex: str, meta: str = ""):
+def _src_header(icon: str, title: str, color_hex: str, meta: str = "", url: str = ""):
     """Cabecera coloreada por fuente de datos dentro del formulario."""
+    if url:
+        meta_html = (
+            f'<a href="{url}" target="_blank" rel="noopener noreferrer"'
+            f' style="margin-left:auto;font-family:\'JetBrains Mono\';font-size:10.5px;'
+            f'color:#7A7290;text-transform:uppercase;letter-spacing:0.08em;'
+            f'text-decoration:none;display:inline-flex;align-items:center;gap:5px;'
+            f'transition:color 0.15s;"'
+            f' onmouseover="this.style.color=\'{color_hex}\'"'
+            f' onmouseout="this.style.color=\'#7A7290\'">'
+            f'{meta}'
+            f'<span style="font-family:\'Material Symbols Rounded\';font-size:13px;vertical-align:-2px;">open_in_new</span>'
+            f'</a>'
+        )
+    else:
+        meta_html = (
+            f'<span style="margin-left:auto;font-family:\'JetBrains Mono\';font-size:10.5px;'
+            f'color:#7A7290;text-transform:uppercase;letter-spacing:0.08em;">{meta}</span>'
+        )
+
     st.markdown(
         f"""
         <div style="display:flex;align-items:center;gap:12px;margin:18px 0 10px;">
@@ -58,8 +78,7 @@ def _src_header(icon: str, title: str, color_hex: str, meta: str = ""):
             {icon}
           </div>
           <h4 style="font-family:'Space Grotesk';font-size:16px;margin:0;">{title}</h4>
-          <span style="margin-left:auto;font-family:'JetBrains Mono';font-size:10.5px;
-                       color:#7A7290;text-transform:uppercase;letter-spacing:0.08em;">{meta}</span>
+          {meta_html}
         </div>
         """,
         unsafe_allow_html=True,
@@ -76,7 +95,7 @@ with st.form("form_prediccion"):
         placeholder="Ej: Rels B, Recycled J, La Zowi…",
     )
 
-    _src_header("music_note", "Spotify", PALETTE["mint"], "3 campos")
+    _src_header("music_note", "Spotify", PALETTE["mint"], "3 campos · Spotify", "https://open.spotify.com")
     col_sp1, col_sp2, col_sp3 = st.columns(3)
     with col_sp1:
         sp_num_albums  = st.number_input("Nº álbumes", min_value=0, value=0, step=1)
@@ -85,14 +104,14 @@ with st.form("form_prediccion"):
     with col_sp3:
         sp_anos_activo = st.number_input("Años activo", min_value=0.0, value=1.0, step=0.5, format="%.1f")
 
-    _src_header("radio", "Last.fm", PALETTE["pink"], "2 campos · buscar artista ↗")
+    _src_header("radio", "Last.fm", PALETTE["pink"], "2 campos · Last.fm", "https://www.last.fm")
     col_lfm1, col_lfm2 = st.columns(2)
     with col_lfm1:
         lfm_oyentes   = st.number_input("Oyentes únicos",    min_value=0, value=0, step=100)
     with col_lfm2:
         lfm_scrobbles = st.number_input("Scrobbles totales", min_value=0, value=0, step=1000)
 
-    _src_header("smart_display", "YouTube", PALETTE["coral"], "3 campos")
+    _src_header("smart_display", "YouTube", PALETTE["coral"], "3 campos · YouTube", "https://www.youtube.com")
     col_yt1, col_yt2, col_yt3 = st.columns(3)
     with col_yt1:
         yt_suscriptores   = st.number_input("Suscriptores",   min_value=0, value=0, step=100)
@@ -104,7 +123,7 @@ with st.form("form_prediccion"):
             help="Permite calcular las vistas medias por vídeo. Déjalo en 0 si no lo sabes.",
         )
 
-    _src_header("stadium", "Conciertos (setlist.fm)", PALETTE["blue"], "2 campos + nota libre")
+    _src_header("stadium", "Conciertos (setlist.fm)", PALETTE["blue"], "2 campos · Setlist.fm", "https://www.setlist.fm")
     col_sl1, col_sl2 = st.columns([1, 1])
     with col_sl1:
         sl_tiene_datos = st.checkbox(
@@ -272,11 +291,9 @@ if submitted:
                 valor = format_valor(key, features[key])
                 (rows_tech if es_tecnica(key) else rows_main).append({"Variable": label, "Valor": valor})
             if rows_main:
-                import pandas as pd
                 st.dataframe(pd.DataFrame(rows_main), hide_index=True, use_container_width=True)
             if rows_tech:
                 with st.expander(f"Variables internas del modelo ({len(rows_tech)})", expanded=False):
-                    import pandas as pd
                     st.dataframe(pd.DataFrame(rows_tech), hide_index=True, use_container_width=True)
             st.markdown("")
 
