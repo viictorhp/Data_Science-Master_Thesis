@@ -14,6 +14,7 @@ El foco está en artistas **poco conocidos o emergentes**, lo que implica datos 
 
 ```
 app.py               # Página de inicio del dashboard (Landing)
+styles.py            # Sistema de diseño compartido (CSS, paleta, componentes HTML)
 pages/
   1_Resultados.py    # Benchmark de modelos, confusión, feature importance y SHAP global
   2_Prediccion.py    # Formulario de predicción con traza detallada y waterfall SHAP
@@ -509,36 +510,50 @@ Ambos plots se renderizan automáticamente en el dashboard:
 
 ## Dashboard Streamlit (`app.py` · `pages/`)
 
-### Arranque
+> **🚀 App desplegada:** [datascience-masterthesis-rszvqcfaehgxdhnxbaaz3a.streamlit.app](https://datascience-masterthesis-rszvqcfaehgxdhnxbaaz3a.streamlit.app/)
+
+### Arranque local
 
 ```bash
-# Activar entorno virtual primero
-.venv\Scripts\Activate.ps1   # Windows PowerShell
+# Activar entorno virtual (Windows PowerShell)
+.venv\Scripts\Activate.ps1
 
 streamlit run app.py
 ```
 
-El dashboard necesita dos credenciales en `.env`:
+Para ejecutar localmente la página de Análisis IA, crea un archivo `.env` en la raíz con:
 
 ```
-GROQ_API_KEY=tu_clave_groq        # para el agente IA (página 3)
-# Las claves de Spotify/setlist.fm solo son necesarias para recolectar datos nuevos
+GROQ_API_KEY=tu_clave_groq
 ```
+
+En Streamlit Cloud la clave se configura en **Settings → Secrets** del dashboard de la app; las páginas 1 y 2 funcionan sin ella.
+
+### Sistema de diseño (`styles.py`)
+
+Todas las páginas comparten un sistema de diseño centralizado en `styles.py` con identidad visual propia:
+
+- **Paleta**: fondo nocturno violeta (`#0E0B16`) · acentos magenta, lima eléctrica y mint
+- **Tipografía**: Space Grotesk (titulares) · Inter (cuerpo) · JetBrains Mono (datos/código)
+- **Iconos**: Material Symbols Rounded en lugar de emojis
+- **Componentes**: `page_header()`, `hero()`, `nav_card()`, `tier_chip()`, `result_disc()`, `section_label()`, `brand_block()`
+
+El tema base se fija en `.streamlit/config.toml`; `styles.py` lo extiende con CSS completo inyectado vía `inject_styles()`.
 
 ### Páginas
 
 | Página | Archivo | Descripción |
 |--------|---------|-------------|
-| 🏠 Landing | `app.py` | Métricas del proyecto, descripción del tier system, navegación |
-| 📊 Resultados | `pages/1_Resultados.py` | Benchmark, XGBoost base vs tuned, confusión, feature importance, **SHAP global** |
-| 🎤 Predicción | `pages/2_Prediccion.py` | Formulario de 9 campos, traza del pipeline, resultado con probabilidades, **alertas de inconsistencias**, variables con nombres amigables agrupadas por fuente, **waterfall SHAP** |
-| 🤖 Análisis IA | `pages/3_Analisis_IA.py` | Explicación estructurada en 3 secciones + chat de seguimiento con historial |
+| 🏠 Landing | `app.py` | Métricas del modelo, tier system con chips visuales, tarjetas de navegación y hero |
+| 📊 Resultados | `pages/1_Resultados.py` | Benchmark de 8 modelos, XGBoost base vs tuned, confusión OOF, feature importance (RF · XGBoost · **SHAP global**) |
+| 🎤 Predicción | `pages/2_Prediccion.py` | Formulario agrupado por fuente con **enlaces directos** a Spotify, Last.fm, YouTube y setlist.fm · traza del pipeline · resultado con probabilidades · **alertas de inconsistencias** · **waterfall SHAP** |
+| 🤖 Análisis IA | `pages/3_Analisis_IA.py` | Explicación estructurada en 3 secciones + chat de seguimiento con historial · requiere `GROQ_API_KEY` |
 
 ### Flujo de uso
 
-1. **🎤 Predicción** — rellena los 8 campos del artista y pulsa *Predecir tier de sala*. El resultado se guarda en `st.session_state`.
+1. **🎤 Predicción** — rellena los campos del artista (todos opcionales) y pulsa *Predecir tier de sala*. El resultado se guarda en `st.session_state`. Cada cabecera de sección enlaza directamente a la plataforma correspondiente para facilitar la búsqueda de datos.
 2. **🤖 Análisis IA** — el agente genera automáticamente una explicación y permite hacer preguntas de seguimiento.
-3. **🔄 Nueva predicción** — botón en la barra lateral (o en la página) que limpia el estado y permite analizar otro artista sin recargar la app.
+3. **🔄 Nueva predicción** — botón en la barra lateral que limpia el estado y permite analizar otro artista sin recargar la app.
 
 ### Traza en tiempo real
 
