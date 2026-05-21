@@ -26,13 +26,13 @@ _REFERENCIA_TIERS = """
 ╠══════════════════╦══════════════╦══════════════╦════════════════╣
 ║ Métrica          ║     BAJO     ║    MEDIO     ║      ALTO      ║
 ╠══════════════════╬══════════════╬══════════════╬════════════════╣
-║ Last.fm oyentes  ║  1K – 15K    ║  15K – 150K  ║  150K – 2M+    ║
-║ Last.fm scrobbles║  10K – 200K  ║  200K – 3M   ║  3M – 50M+     ║
-║ YT suscriptores  ║  500 – 15K   ║  10K – 200K  ║  200K – 5M+    ║
-║ YT vistas tot.   ║  50K – 500K  ║  500K – 10M  ║  10M – 500M+   ║
-║ Conciertos sl.fm ║  0 – 5 (21%  ║  5 – 30 (75% ║  20 – 100+     ║
+║ Last.fm oyentes  ║  1K a 15K    ║  15K a 150K  ║  150K a 2M+    ║
+║ Last.fm scrobbles║  10K a 200K  ║  200K a 3M   ║  3M a 50M+     ║
+║ YT suscriptores  ║  500 a 15K   ║  10K a 200K  ║  200K a 5M+    ║
+║ YT vistas tot.   ║  50K a 500K  ║  500K a 10M  ║  10M a 500M+   ║
+║ Conciertos sl.fm ║  0 a 5 (21%  ║  5 a 30 (75% ║  20 a 100+     ║
 ║                  ║  con datos)  ║  con datos)  ║  (95% con dat.)║
-║ Años activo      ║  1 – 4       ║  3 – 7       ║  5 – 12        ║
+║ Años activo      ║  1 a 4       ║  3 a 7       ║  5 a 12        ║
 ╠══════════════════╬══════════════╬══════════════╬════════════════╣
 ║ Artistas tipo    ║ Tarchi,      ║ BEJO,        ║ Bad Gyal,      ║
 ║                  ║ Gatti,       ║ Choclock,    ║ Quevedo,       ║
@@ -71,7 +71,7 @@ el tier de sala que un artista puede llenar en España.
 
 ═══ SISTEMA DE TIERS ═══
 • Bajo  (1): < 200 personas — underground, salas pequeñas (ej: Sala Víbora, Bar Berlin)
-• Medio (2): 200–2.000 personas — salas medianas (ej: Planta Baja, Copera, La Riviera, Razzmatazz)
+• Medio (2): 200 a 2.000 personas — salas medianas (ej: Planta Baja, Copera, La Riviera, Razzmatazz)
 • Alto  (3): > 2.000 personas — palacios de deportes, WiZink, Movistar Arena, festivales grandes
 
 ═══ MODELO ═══
