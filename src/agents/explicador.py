@@ -21,25 +21,26 @@ _GROQ_MODEL = "llama-3.3-70b-versatile"
 # Útiles para que el agente pueda contextualizar sin inventar datos
 # ---------------------------------------------------------------------------
 _REFERENCIA_TIERS = """
-╔══════════════════════════════════════════════════════════════════╗
-║           VALORES TÍPICOS POR TIER (dataset de 157 artistas)    ║
+╔═════════════════════════════════════════════════════════════════╗
+║           VALORES TÍPICOS POR TIER (dataset de 182 artistas)    ║
 ╠══════════════════╦══════════════╦══════════════╦════════════════╣
 ║ Métrica          ║     BAJO     ║    MEDIO     ║      ALTO      ║
 ╠══════════════════╬══════════════╬══════════════╬════════════════╣
-║ Last.fm oyentes  ║  1K – 15K    ║  15K – 150K  ║  150K – 2M+   ║
-║ Last.fm scrobbles║  10K – 200K  ║  200K – 3M   ║  3M – 50M+    ║
-║ YT suscriptores  ║  500 – 15K   ║  10K – 200K  ║  200K – 5M+   ║
-║ YT vistas tot.   ║  50K – 500K  ║  500K – 10M  ║  10M – 500M+  ║
-║ Conciertos sl.fm ║  0 – 5 (21%  ║  5 – 30 (75% ║  20 – 100+    ║
+║ Last.fm oyentes  ║  1K – 15K    ║  15K – 150K  ║  150K – 2M+    ║
+║ Last.fm scrobbles║  10K – 200K  ║  200K – 3M   ║  3M – 50M+     ║
+║ YT suscriptores  ║  500 – 15K   ║  10K – 200K  ║  200K – 5M+    ║
+║ YT vistas tot.   ║  50K – 500K  ║  500K – 10M  ║  10M – 500M+   ║
+║ Conciertos sl.fm ║  0 – 5 (21%  ║  5 – 30 (75% ║  20 – 100+     ║
 ║                  ║  con datos)  ║  con datos)  ║  (95% con dat.)║
-║ Años activo      ║  1 – 4       ║  3 – 7       ║  5 – 12       ║
+║ Años activo      ║  1 – 4       ║  3 – 7       ║  5 – 12        ║
 ╠══════════════════╬══════════════╬══════════════╬════════════════╣
-║ Artistas tipo    ║ Tarchi,      ║ BEJO,        ║ Bad Gyal,     ║
-║                  ║ Gatti,       ║ Choclock,    ║ Quevedo,      ║
-║                  ║ Xico Palma   ║ La Zowi,     ║ Morad,        ║
-║                  ║              ║ Metrika,     ║ Rels B,       ║
-║                  ║              ║ Cecilio G    ║ Yung Beef,    ║
-║                  ║              ║              ║ SAIKO, Maka   ║
+║ Artistas tipo    ║ Tarchi,      ║ BEJO,        ║ Bad Gyal,      ║
+║                  ║ Gatti,       ║ Choclock,    ║ Quevedo,       ║
+║                  ║ Xico Palma   ║ Metrika,     ║ Morad,         ║
+║                  ║              ║ Elio Toffana,║ La Zowi,       ║
+║                  ║              ║ Enry-k       ║ Rels B,        ║
+║                  ║              ║              ║ Yung Beef,     ║
+║                  ║              ║              ║ SAIKO, Maka    ║
 ╚══════════════════╩══════════════╩══════════════╩════════════════╝
 Nota: Quevedo y Bad Gyal son outliers extremos de YouTube (10-50x la mediana de alto).
 """
@@ -74,8 +75,8 @@ el tier de sala que un artista puede llenar en España.
 • Alto  (3): > 2.000 personas — palacios de deportes, WiZink, Movistar Arena, festivales grandes
 
 ═══ MODELO ═══
-• Dataset: 157 artistas de rap/urbano español (bajo=62 · medio=57 · alto=38)
-• Accuracy CV5: 68.1% | F1 macro: 67.5%  (baseline dummy: 39.5%)
+• Dataset: 182 artistas de rap/urbano español (bajo=85 · medio=65 · alto=32)
+• Accuracy CV5: 68.2% | F1 macro: 66.6%  (baseline dummy: 39.5%)
 • Features con más peso (SHAP): nº conciertos en setlist.fm · oyentes Last.fm ·
   vistas y suscriptores YouTube · si aparece o no en setlist.fm (sl_tiene_datos) ·
   scrobbles Last.fm · países donde ha actuado
@@ -86,7 +87,7 @@ el tier de sala que un artista puede llenar en España.
 ═══ PREDICCIÓN: {nombre.upper()} ═══
 • Tier predicho  : {nivel.upper()}
 • Probabilidades : Bajo {proba['bajo']:.1%} · Medio {proba['medio']:.1%} · Alto {proba['alto']:.1%}
-• Confianza      : {"alta" if proba[nivel] > 0.70 else "moderada" if proba[nivel] > 0.50 else "baja — caso frontera"}
+• Confianza      : {"alta (≥70%)" if proba[nivel] >= 0.70 else "media (55–70%)" if proba[nivel] >= 0.55 else "baja (<55%) — caso frontera"}
 
 ═══ MÉTRICAS DEL ARTISTA ═══
 • Spotify  : {f['sp_num_albums']:.0f} álbumes · {f['sp_num_singles']:.0f} singles · {f['sp_anos_activo']:.1f} años activo
@@ -107,8 +108,10 @@ el tier de sala que un artista puede llenar en España.
   usa la tabla de referencia: Yung Beef es ALTO, con valores típicos de esa franja.
   No inventes cifras exactas de otros artistas si no las tienes.
 - Sé concreto: menciona los números del artista y en qué rango de tier caen.
-- El modelo tiene 68.1% de accuracy — reconoce su incertidumbre con honestidad.
-- Máximo 250 palabras por respuesta salvo que el usuario pida más detalle."""
+- El modelo tiene 68.2% de accuracy — reconoce su incertidumbre con honestidad.
+- Máximo 250 palabras por respuesta salvo que el usuario pida más detalle.
+- No inventes las respuestas, si no la sabes o no estás seguro, dilo.
+- Básate únicamente en las métricas entrenadas de artistas urbanos españoles."""
 
 
 def generar_explicacion(resultado: dict, nombre: str, info_adicional: str) -> str:
