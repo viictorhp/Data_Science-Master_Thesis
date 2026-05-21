@@ -152,11 +152,13 @@ def detectar_alertas(features: dict, nivel: str, proba: dict) -> list[dict]:
     rpm    = features.get("sp_releases_por_ano", 0)
     conf   = proba[nivel]
 
-    # ── Baja confianza ────────────────────────────────────────────────────────
-    if conf < 0.45:
-        adyacentes = {"bajo": ["medio"], "medio": ["bajo", "alto"], "alto": ["medio"]}
-        candidatos = {k: v for k, v in proba.items() if k in adyacentes[nivel]}
-        segundo = max(candidatos.items(), key=lambda x: x[1])
+    # ── Confianza ─────────────────────────────────────────────────────────────
+    adyacentes = {"bajo": ["medio"], "medio": ["bajo", "alto"], "alto": ["medio"]}
+    candidatos = {k: v for k, v in proba.items() if k in adyacentes[nivel]}
+    segundo = max(candidatos.items(), key=lambda x: x[1])
+    margen = conf - segundo[1]
+
+    if conf < 0.55:
         alertas.append({
             "tipo": "warning",
             "msg": (
@@ -165,6 +167,26 @@ def detectar_alertas(features: dict, nivel: str, proba: dict) -> list[dict]:
                 f"y **{segundo[0].upper()}** ({segundo[1]:.1%}). "
                 "Este es un artista en zona frontera — pequeños cambios en las métricas "
                 "podrían invertir el resultado."
+            ),
+        })
+    elif conf < 0.70:
+        alertas.append({
+            "tipo": "info",
+            "msg": (
+                f"**Predicción con confianza media ({conf:.1%}).**  \n"
+                f"El modelo se inclina por **{nivel.upper()}** ({conf:.1%}), "
+                f"pero **{segundo[0].upper()}** tiene una probabilidad relevante ({segundo[1]:.1%}). "
+                "El resultado es orientativo — complementa con el análisis SHAP."
+            ),
+        })
+    elif margen < 0.15:
+        alertas.append({
+            "tipo": "info",
+            "msg": (
+                f"**Margen estrecho entre los dos tiers más probables.**  \n"
+                f"Aunque la confianza es alta ({conf:.1%}), **{segundo[0].upper()}** "
+                f"está a solo {margen:.1%} de diferencia. "
+                "Un par de métricas adicionales podría mover la predicción."
             ),
         })
 

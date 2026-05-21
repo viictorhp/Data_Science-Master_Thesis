@@ -219,6 +219,13 @@ if submitted:
     color = TIER_COLOR[nivel]
     pct = int(round(proba[nivel] * 100))
 
+    if pct >= 70:
+        conf_label, conf_color = "ALTA CONFIANZA", PALETTE["mint"]
+    elif pct >= 55:
+        conf_label, conf_color = "CONFIANZA MEDIA", PALETTE["amber"]
+    else:
+        conf_label, conf_color = "BAJA CONFIANZA", PALETTE["coral"]
+
     bars_html = ""
     for n in ("bajo", "medio", "alto"):
         c = TIER_COLOR[n]
@@ -242,9 +249,15 @@ if submitted:
           {result_disc(pct, color)}
           <div>
             <div style="font-family:'JetBrains Mono';font-size:11px;color:{color};
-                        text-transform:uppercase;letter-spacing:0.12em;">
+                        text-transform:uppercase;letter-spacing:0.12em;
+                        display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
               <span style="font-family:'Material Symbols Rounded';font-size:13px;vertical-align:-2px;">verified</span>
               &nbsp;PREDICCIÓN COMPLETADA
+              <span style="background:{conf_color}22;color:{conf_color};
+                           border:1px solid {conf_color}55;border-radius:6px;
+                           padding:2px 8px;font-size:10px;letter-spacing:0.1em;">
+                {conf_label}
+              </span>
             </div>
             <h3 style="font-family:'Space Grotesk';font-size:32px;margin:8px 0 6px;letter-spacing:-0.02em;">
               {nombre_clean} &nbsp; · &nbsp; tier <span style="color:{color};">{nivel.upper()}</span>

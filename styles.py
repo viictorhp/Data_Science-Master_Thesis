@@ -45,9 +45,9 @@ PALETTE = {
 TIER_COLOR = {"bajo": PALETTE["coral"], "medio": PALETTE["amber"], "alto": PALETTE["mint"]}
 TIER_ICON  = {"bajo": "trending_down", "medio": "trending_flat", "alto": "trending_up"}
 TIER_DESC  = {
-    "bajo":  "Sala pequeña · < 200 personas",
+    "bajo":  "Sala pequeña · &lt; 200 personas",
     "medio": "Sala mediana · 200 – 2 000 personas",
-    "alto":  "Sala grande · > 2 000 personas · festivales",
+    "alto":  "Sala grande · &gt; 2 000 personas · festivales",
 }
 
 # ---------------------------------------------------------------------------
