@@ -246,7 +246,7 @@ if submitted:
                     border:1px solid {color}66;border-radius:22px;padding:30px;
                     display:grid;grid-template-columns:auto 1fr 220px;gap:28px;align-items:center;
                     position:relative;overflow:hidden;margin-top:24px;">
-          {result_disc(pct, color)}
+          {result_disc(pct, color).strip()}
           <div>
             <div style="font-family:'JetBrains Mono';font-size:11px;color:{color};text-transform:uppercase;letter-spacing:0.12em;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
               <span style="font-family:'Material Symbols Rounded';font-size:13px;vertical-align:-2px;">verified</span>

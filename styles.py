@@ -594,14 +594,14 @@ def tier_chip(nivel: str, big: bool = False) -> str:
 
 def result_disc(percentage: int, color: str = "#00E0A4") -> str:
     """Disco circular con porcentaje. Para destacar la confianza."""
-    return f"""
-    <div style="width:120px;height:120px;border-radius:50%;
-                background:conic-gradient({color} 0% {percentage}%, rgba(255,255,255,0.08) {percentage}% 100%);
-                display:flex;align-items:center;justify-content:center;position:relative;">
-      <div style="position:absolute;inset:12px;background:#0E0918;border-radius:50%;"></div>
-      <b style="position:relative;font-family:'Space Grotesk';font-size:30px;color:{color};font-weight:600;">{percentage}%</b>
-    </div>
-    """
+    return (
+        f'<div style="width:120px;height:120px;border-radius:50%;'
+        f'background:conic-gradient({color} 0% {percentage}%, rgba(255,255,255,0.08) {percentage}% 100%);'
+        f'display:flex;align-items:center;justify-content:center;position:relative;">'
+        f'<div style="position:absolute;inset:12px;background:#0E0918;border-radius:50%;"></div>'
+        f'<b style="position:relative;font-family:\'Space Grotesk\';font-size:30px;color:{color};font-weight:600;">{percentage}%</b>'
+        f'</div>'
+    )
 
 
 def divider(margin: str = "1.6rem"):
