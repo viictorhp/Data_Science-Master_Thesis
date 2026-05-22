@@ -16,6 +16,7 @@ Uso desde Python:
 import json
 from functools import lru_cache
 from pathlib import Path
+from typing import Optional
 
 import joblib
 import numpy as np
@@ -49,6 +50,7 @@ def _log1p(x: float) -> float:
 
 
 def construir_features(
+    # --- Parámetros originales (sin cambio) ---
     sp_num_albums: int = 0,
     sp_num_singles: int = 0,
     sp_anos_activo: float = 1.0,
@@ -59,19 +61,51 @@ def construir_features(
     yt_num_videos: int = 0,
     sl_num_conciertos: int = 0,
     sl_tiene_datos: int = 0,
+    # --- Parámetros nuevos con defaults (retrocompatibles) ---
+    # Antes eran constantes en _DEFAULTS; ahora el fetch automático provee valores reales
+    sp_avg_duration_ms: float = _DEFAULTS["sp_avg_duration_ms"],
+    sp_pct_explicit: float = _DEFAULTS["sp_pct_explicit"],
+    sp_pct_colabs: float = _DEFAULTS["sp_pct_colabs"],
+    lfm_num_generos: int = _DEFAULTS["lfm_num_generos"],
+    # Setlist.fm: antes hardcodeados a 0 o inferidos incorrectamente
+    sl_avg_canciones: float = 0.0,
+    sl_pct_encore: float = 0.0,
+    sl_num_paises: Optional[int] = None,    # None = inferir de sl_num_conciertos
+    sl_pct_espana: Optional[float] = None,  # None = 100% si hay conciertos, 0% si no
+    # Tendencias: antes siempre 0; ahora reciben el valor real del fetch
+    trend_gtrends_interes_medio: float = 0.0,
+    trend_yt_vistas_recientes: float = 0.0,
+    trend_yt_videos_recientes: int = 0,
 ) -> dict:
     """
-    Construye el vector completo de 32 features a partir de los inputs del usuario.
-    Todos los campos derivados (logs, ratios) se calculan aquí.
-    Las features no pedidas al usuario se imputan con valores neutros.
+    Construye el vector completo de 32 features.
+    Los parámetros nuevos tienen defaults que replican el comportamiento anterior,
+    por lo que el formulario manual y los tests existentes siguen funcionando.
     """
     anos = max(sp_anos_activo, 0.5)
     total_releases = sp_num_albums + sp_num_singles
-    # Si hay conciertos documentados, el artista sí aparece en setlist.fm
     sl_tiene_datos_final = 1 if sl_num_conciertos > 0 else int(sl_tiene_datos)
 
     yt_vistas_por_video = (
         yt_vistas_totales / yt_num_videos if yt_num_videos > 0 else 0.0
+    )
+
+    # Fallbacks para campos setlist.fm opcionales
+    sl_num_paises_final = (
+        sl_num_paises if sl_num_paises is not None
+        else min(sl_num_conciertos, 1)
+    )
+    sl_pct_espana_final = (
+        sl_pct_espana if sl_pct_espana is not None
+        else (1.0 if sl_num_conciertos > 0 else 0.0)
+    )
+
+    # Tendencias derivadas
+    trend_gtrends_log = _log1p(trend_gtrends_interes_medio)
+    trend_yt_vistas_recientes_log = _log1p(trend_yt_vistas_recientes)
+    trend_yt_vistas_por_video_reciente = (
+        trend_yt_vistas_recientes / trend_yt_videos_recientes
+        if trend_yt_videos_recientes > 0 else 0.0
     )
 
     return {
@@ -81,16 +115,16 @@ def construir_features(
         "sp_anos_activo":           float(sp_anos_activo),
         "sp_releases_por_ano":      total_releases / anos,
         "sp_ratio_albums_singles":  sp_num_albums / (sp_num_singles + 1),
-        "sp_avg_duration_ms":       _DEFAULTS["sp_avg_duration_ms"],
-        "sp_pct_explicit":          _DEFAULTS["sp_pct_explicit"],
-        "sp_pct_colabs":            _DEFAULTS["sp_pct_colabs"],
+        "sp_avg_duration_ms":       float(sp_avg_duration_ms),
+        "sp_pct_explicit":          float(sp_pct_explicit),
+        "sp_pct_colabs":            float(sp_pct_colabs),
         # --- Last.fm ---
         "lfm_oyentes":              float(lfm_oyentes),
         "lfm_oyentes_log":          _log1p(lfm_oyentes),
         "lfm_scrobbles":            float(lfm_scrobbles),
         "lfm_scrobbles_log":        _log1p(lfm_scrobbles),
         "lfm_scrobbles_por_oyente": lfm_scrobbles / max(lfm_oyentes, 1),
-        "lfm_num_generos":          _DEFAULTS["lfm_num_generos"],
+        "lfm_num_generos":          float(lfm_num_generos),
         # --- YouTube ---
         "yt_suscriptores":          float(yt_suscriptores),
         "yt_suscriptores_log":      _log1p(yt_suscriptores),
@@ -100,18 +134,18 @@ def construir_features(
         "yt_vistas_por_video":      float(yt_vistas_por_video),
         "yt_vistas_por_suscriptor": yt_vistas_totales / max(yt_suscriptores, 1),
         # --- setlist.fm ---
-        "sl_avg_canciones":         0.0,
-        "sl_pct_encore":            0.0,
-        "sl_num_paises":            float(min(sl_num_conciertos, 1)),
+        "sl_avg_canciones":         float(sl_avg_canciones),
+        "sl_pct_encore":            float(sl_pct_encore),
+        "sl_num_paises":            float(sl_num_paises_final),
         "sl_num_conciertos":        float(sl_num_conciertos),
-        "sl_pct_espana":            100.0 if sl_num_conciertos > 0 else 0.0,
+        "sl_pct_espana":            float(sl_pct_espana_final),
         "sl_tiene_datos":           float(sl_tiene_datos_final),
-        # --- Tendencias (no se piden, se imputan a 0) ---
-        "trend_gtrends_interes_medio":        0.0,
-        "trend_gtrends_log":                  0.0,
-        "trend_yt_vistas_recientes":          0.0,
-        "trend_yt_vistas_recientes_log":      0.0,
-        "trend_yt_vistas_por_video_reciente": 0.0,
+        # --- Tendencias ---
+        "trend_gtrends_interes_medio":        float(trend_gtrends_interes_medio),
+        "trend_gtrends_log":                  trend_gtrends_log,
+        "trend_yt_vistas_recientes":          float(trend_yt_vistas_recientes),
+        "trend_yt_vistas_recientes_log":      trend_yt_vistas_recientes_log,
+        "trend_yt_vistas_por_video_reciente": trend_yt_vistas_por_video_reciente,
     }
 
 
@@ -126,29 +160,24 @@ def predecir(
     yt_num_videos: int = 0,
     sl_num_conciertos: int = 0,
     sl_tiene_datos: int = 0,
+    # Parámetros nuevos (retrocompatibles: todos tienen defaults)
+    sp_avg_duration_ms: float = _DEFAULTS["sp_avg_duration_ms"],
+    sp_pct_explicit: float = _DEFAULTS["sp_pct_explicit"],
+    sp_pct_colabs: float = _DEFAULTS["sp_pct_colabs"],
+    lfm_num_generos: int = _DEFAULTS["lfm_num_generos"],
+    sl_avg_canciones: float = 0.0,
+    sl_pct_encore: float = 0.0,
+    sl_num_paises: Optional[int] = None,
+    sl_pct_espana: Optional[float] = None,
+    trend_gtrends_interes_medio: float = 0.0,
+    trend_yt_vistas_recientes: float = 0.0,
+    trend_yt_videos_recientes: int = 0,
 ) -> dict:
     """
     Predice el tier de sala de un artista de rap/urbano español.
+    Los parámetros nuevos tienen defaults que mantienen el comportamiento anterior.
 
-    Parámetros
-    ----------
-    sp_num_albums       : Nº de álbumes en Spotify
-    sp_num_singles      : Nº de singles en Spotify
-    sp_anos_activo      : Años desde el primer lanzamiento
-    lfm_oyentes         : Oyentes únicos históricos en Last.fm
-    lfm_scrobbles       : Reproducciones totales acumuladas en Last.fm
-    yt_suscriptores     : Suscriptores del canal de YouTube
-    yt_vistas_totales   : Vistas totales acumuladas en YouTube
-    yt_num_videos       : Nº de vídeos publicados en el canal de YouTube
-    sl_num_conciertos   : Nº de conciertos documentados en setlist.fm
-    sl_tiene_datos      : 1 si el artista aparece en setlist.fm, 0 si no
-
-    Retorna
-    -------
-    dict con:
-        nivel           : "bajo" | "medio" | "alto"
-        probabilidades  : {"bajo": float, "medio": float, "alto": float}
-        features        : vector completo de 32 features enviado al modelo
+    Retorna dict con: nivel, probabilidades, features.
     """
     model, meta = _cargar_modelo()
 
@@ -163,6 +192,17 @@ def predecir(
         yt_num_videos=yt_num_videos,
         sl_num_conciertos=sl_num_conciertos,
         sl_tiene_datos=sl_tiene_datos,
+        sp_avg_duration_ms=sp_avg_duration_ms,
+        sp_pct_explicit=sp_pct_explicit,
+        sp_pct_colabs=sp_pct_colabs,
+        lfm_num_generos=lfm_num_generos,
+        sl_avg_canciones=sl_avg_canciones,
+        sl_pct_encore=sl_pct_encore,
+        sl_num_paises=sl_num_paises,
+        sl_pct_espana=sl_pct_espana,
+        trend_gtrends_interes_medio=trend_gtrends_interes_medio,
+        trend_yt_vistas_recientes=trend_yt_vistas_recientes,
+        trend_yt_videos_recientes=trend_yt_videos_recientes,
     )
 
     # Construir DataFrame respetando el orden exacto que espera el modelo

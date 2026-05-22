@@ -66,6 +66,35 @@ class LastFMCollector:
             print(f"  Error Last.fm para '{nombre_lastfm}': {e}")
             return None
 
+    def buscar_artista(self, nombre: str, umbral: float = 0.70) -> dict | None:
+        """
+        Busca un artista por nombre usando artist.search para tolerar variaciones.
+        Si el mejor candidato supera el umbral (difflib), obtiene sus datos completos.
+        Umbral 0.70: más permisivo que el resolver (0.80) para uso en predicción.
+        """
+        import difflib
+
+        def _sim(a: str, b: str) -> float:
+            return difflib.SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio()
+
+        try:
+            data = self._get({"method": "artist.search", "artist": nombre, "limit": 10})
+            candidatos = (
+                data.get("results", {})
+                    .get("artistmatches", {})
+                    .get("artist", [])
+            )
+            if not candidatos:
+                return None
+            mejor = max(candidatos, key=lambda a: _sim(nombre, a["name"]))
+            score = _sim(nombre, mejor["name"])
+            if score < umbral:
+                return None
+            return self.obtener_info(mejor["name"])
+        except Exception as e:
+            print(f"  Error buscar_artista Last.fm para '{nombre}': {e}")
+            return None
+
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 

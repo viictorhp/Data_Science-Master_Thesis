@@ -105,8 +105,9 @@ class TestConstruirFeatures:
     # --- Features de setlist.fm ---
 
     def test_sl_pct_espana_con_conciertos(self):
+        # El modelo se entrenó con proporciones (0.0–1.0), no porcentajes
         f = construir_features(sl_num_conciertos=5)
-        assert f["sl_pct_espana"] == 100.0
+        assert f["sl_pct_espana"] == 1.0
 
     def test_sl_pct_espana_sin_conciertos(self):
         f = construir_features(sl_num_conciertos=0)
