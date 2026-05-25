@@ -225,8 +225,75 @@ if st.session_state.get("prediccion"):
 
 estado = st.session_state["fetch_estado"]
 
+
+def _src_header(icon: str, title: str, color_hex: str, meta: str = "", url: str = ""):
+    if url:
+        meta_html = (
+            f'<a href="{url}" target="_blank" rel="noopener noreferrer"'
+            f' style="margin-left:auto;font-family:\'JetBrains Mono\';font-size:10.5px;'
+            f'color:#7A7290;text-transform:uppercase;letter-spacing:0.08em;'
+            f'text-decoration:none;display:inline-flex;align-items:center;gap:5px;">'
+            f'{meta}'
+            f'<span style="font-family:\'Material Symbols Rounded\';font-size:13px;vertical-align:-2px;">open_in_new</span>'
+            f'</a>'
+        )
+    else:
+        meta_html = (
+            f'<span style="margin-left:auto;font-family:\'JetBrains Mono\';font-size:10.5px;'
+            f'color:#7A7290;text-transform:uppercase;letter-spacing:0.08em;">{meta}</span>'
+        )
+    st.markdown(
+        f"""
+        <div style="display:flex;align-items:center;gap:12px;margin:18px 0 10px;">
+          <div style="width:34px;height:34px;border-radius:10px;
+                      background:{color_hex}26;color:{color_hex};
+                      display:flex;align-items:center;justify-content:center;
+                      font-family:'Material Symbols Rounded';font-size:18px;">
+            {icon}
+          </div>
+          <h4 style="font-family:'Space Grotesk';font-size:16px;margin:0;">{title}</h4>
+          {meta_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+_FASES = {
+    "idle":              (1, "Paso 1 · Buscar artista"),
+    "candidatos_listos": (1, "Paso 1 · Confirmar artista"),
+    "confirmado":        (2, "Paso 2 · Obteniendo datos…"),
+    "fetch_completo":    (2, "Paso 2 · Revisar y editar datos"),
+}
+
+
+def _render_fase(estado_actual: str):
+    paso, label = _FASES.get(estado_actual, (1, ""))
+    partes = ""
+    for i in range(1, 4):
+        if i < paso:
+            c, sym = PALETTE["mint"], "●"
+        elif i == paso:
+            c, sym = PALETTE["amber"], "◉"
+        else:
+            c, sym = "#3A3250", "○"
+        partes += f'<span style="color:{c};font-size:15px;margin:0 3px;">{sym}</span>'
+    st.markdown(
+        f"""<div style="display:flex;align-items:center;gap:10px;
+                        margin-bottom:18px;padding:8px 0;
+                        border-bottom:1px solid var(--line,#2A2435);">
+          {partes}
+          <span style="font-family:'JetBrains Mono';font-size:11px;
+                       text-transform:uppercase;letter-spacing:0.1em;
+                       color:#B6ADCB;">{label}</span>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+
 # ── idle: input de nombre ──────────────────────────────────────────────────
 if estado == "idle":
+    _render_fase(estado)
     col_input, col_btn = st.columns([4, 1])
     with col_input:
         nombre_input = st.text_input(
@@ -269,10 +336,11 @@ if estado == "idle":
                 and candidatos[0].score - candidatos[1].score <= 0.05
                 and os.getenv("GROQ_API_KEY")
             ):
-                try:
-                    groq_sugerido = desambiguar_con_groq(nombre_q, candidatos, os.getenv("GROQ_API_KEY"))
-                except Exception:
-                    pass
+                with st.spinner("Consultando IA para desambiguar candidatos…"):
+                    try:
+                        groq_sugerido = desambiguar_con_groq(nombre_q, candidatos, os.getenv("GROQ_API_KEY"))
+                    except Exception:
+                        pass
             st.session_state["fetch_candidatos"]    = candidatos
             st.session_state["fetch_nombre"]        = nombre_q
             st.session_state["fetch_groq_sugerido"] = groq_sugerido
@@ -281,6 +349,7 @@ if estado == "idle":
 
 # ── candidatos_listos: selector ────────────────────────────────────────────
 elif estado == "candidatos_listos":
+    _render_fase(estado)
     candidatos: list = st.session_state["fetch_candidatos"]
     nombre_q: str    = st.session_state["fetch_nombre"]
     groq_sug         = st.session_state.get("fetch_groq_sugerido")
@@ -406,89 +475,104 @@ if estado == "confirmado":
     estado = "fetch_completo"
 
 
-# ── fetch_completo: mostrar tabla de resultados + botón de predicción ─────
+# ── fetch_completo: datos editables + botón de predicción ─────────────────
 if estado == "fetch_completo":
     resultado_fetch: ResultadoFetch = st.session_state["fetch_resultado"]
     nombre_clean = resultado_fetch.nombre_spotify
+    sp_data  = resultado_fetch.sp
+    lfm_data = resultado_fetch.lfm
+    yt_data  = resultado_fetch.yt
+    sl_data  = resultado_fetch.sl
 
-    # Advertencias de la API
+    _render_fase(estado)
+
     for aviso in resultado_fetch.advertencias:
         st.warning(aviso, icon=":material/warning:")
 
-    # Tabla resumen por plataforma
-    section_label("Datos obtenidos", icon="database")
-    _ICONOS_TABLA = {"ok": "✓", "not_found": "✗", "error": "⚠", "skipped": "—"}
-    _COLS_TABLA = {
-        "spotify":    ("Spotify",    ["sp_num_albums", "sp_num_singles", "sp_anos_activo"]),
-        "lastfm":     ("Last.fm",    ["lfm_oyentes", "lfm_scrobbles"]),
-        "youtube":    ("YouTube",    ["yt_suscriptores", "yt_vistas_totales"]),
-        "setlistfm":  ("setlist.fm", ["sl_num_conciertos", "sl_num_paises"]),
-        "tendencias": ("Tendencias", ["trend_gtrends_interes_medio", "trend_yt_vistas_recientes"]),
-    }
-    _ATTR_MAP = {
-        "spotify": "sp", "lastfm": "lfm", "youtube": "yt",
-        "setlistfm": "sl", "tendencias": "trend",
-    }
+    _EST_ICON = {"ok": "✓", "not_found": "✗", "error": "⚠", "skipped": "—"}
 
-    for plataforma, (label, campos) in _COLS_TABLA.items():
-        est = resultado_fetch.estado.get(plataforma, "skipped")
-        icono = _ICONOS_TABLA[est]
-        datos_plat = getattr(resultado_fetch, _ATTR_MAP[plataforma], {})
+    section_label("Datos obtenidos — edita si es necesario", icon="edit")
+    st.caption("Los campos se han rellenado automáticamente. Modifica cualquier valor antes de predecir.")
 
-        valores = []
-        for campo in campos:
-            if campo in datos_plat:
-                val = datos_plat[campo]
-                label_campo = FEATURE_LABELS.get(campo, campo)
-                if isinstance(val, float) and val > 1000:
-                    valores.append(f"{int(val):,}")
-                elif isinstance(val, float):
-                    valores.append(f"{val:.1f}")
-                else:
-                    valores.append(str(val))
-        valores_txt = " · ".join(valores) if valores else "—"
+    # Spotify
+    _src_header("music_note", "Spotify", PALETTE["mint"],
+                _EST_ICON[resultado_fetch.estado.get("spotify", "skipped")] + " Spotify")
+    _c1, _c2, _c3 = st.columns(3)
+    with _c1:
+        ov_sp_albums  = st.number_input("Álbumes", min_value=0,
+                                        value=int(sp_data.get("sp_num_albums", 0)),
+                                        step=1, key="ov_sp_albums")
+    with _c2:
+        ov_sp_singles = st.number_input("Singles", min_value=0,
+                                        value=int(sp_data.get("sp_num_singles", 0)),
+                                        step=1, key="ov_sp_singles")
+    with _c3:
+        ov_sp_anos    = st.number_input("Años activo", min_value=0.0,
+                                        value=float(sp_data.get("sp_anos_activo", 1.0)),
+                                        step=0.5, format="%.1f", key="ov_sp_anos")
 
-        color_est = PALETTE["mint"] if est == "ok" else PALETTE["coral"] if est == "not_found" else PALETTE["amber"]
-        st.markdown(
-            f"""
-            <div style="display:flex;align-items:center;gap:14px;
-                        background:var(--surface);border:1px solid var(--line);
-                        border-radius:12px;padding:10px 16px;margin-bottom:6px;">
-              <span style="font-family:'JetBrains Mono';font-size:16px;color:{color_est};
-                           width:20px;text-align:center;">{icono}</span>
-              <span style="font-weight:600;color:#F2EEFA;min-width:90px;">{label}</span>
-              <span style="color:#B6ADCB;font-size:13px;">{valores_txt}</span>
-            </div>
-            """,
-            unsafe_allow_html=True,
+    # Last.fm
+    _src_header("radio", "Last.fm", PALETTE["pink"],
+                _EST_ICON[resultado_fetch.estado.get("lastfm", "skipped")] + " Last.fm")
+    _c1, _c2 = st.columns(2)
+    with _c1:
+        ov_lfm_oyentes   = st.number_input("Oyentes únicos", min_value=0,
+                                           value=int(lfm_data.get("lfm_oyentes", 0)),
+                                           step=1000, key="ov_lfm_oyentes")
+    with _c2:
+        ov_lfm_scrobbles = st.number_input("Scrobbles totales", min_value=0,
+                                           value=int(lfm_data.get("lfm_scrobbles", 0)),
+                                           step=10000, key="ov_lfm_scrobbles")
+
+    # YouTube
+    _src_header("smart_display", "YouTube", PALETTE["coral"],
+                _EST_ICON[resultado_fetch.estado.get("youtube", "skipped")] + " YouTube")
+    _c1, _c2, _c3 = st.columns(3)
+    with _c1:
+        ov_yt_sus    = st.number_input("Suscriptores", min_value=0,
+                                       value=int(yt_data.get("yt_suscriptores", 0)),
+                                       step=1000, key="ov_yt_sus")
+    with _c2:
+        ov_yt_vistas = st.number_input("Vistas totales", min_value=0,
+                                       value=int(yt_data.get("yt_vistas_totales", 0)),
+                                       step=10000, key="ov_yt_vistas")
+    with _c3:
+        ov_yt_videos = st.number_input("Nº vídeos", min_value=0,
+                                       value=int(yt_data.get("yt_num_videos", 0)),
+                                       step=1, key="ov_yt_videos")
+
+    # setlist.fm
+    _src_header("stadium", "Conciertos (setlist.fm)", PALETTE["blue"],
+                _EST_ICON[resultado_fetch.estado.get("setlistfm", "skipped")] + " setlist.fm")
+    _c1, _c2 = st.columns([1, 1])
+    with _c1:
+        ov_sl_conc  = st.number_input("Nº conciertos documentados", min_value=0,
+                                      value=int(sl_data.get("sl_num_conciertos", 0)),
+                                      step=1, key="ov_sl_conc")
+        ov_sl_tiene = st.checkbox("Aparece en setlist.fm",
+                                  value=bool(sl_data.get("sl_tiene_datos", 0)),
+                                  key="ov_sl_tiene")
+    with _c2:
+        ov_info_conc = st.text_area(
+            "Info adicional sobre directos (opcional)",
+            placeholder="Ej: Tocó en Sala Copera con ~150 personas.",
+            help="No entra en el modelo — el agente IA la usa para contextualizar.",
+            height=100,
+            key="ov_info_conc",
         )
 
-    # Corrección manual inline (solo campos clave no encontrados)
-    _mostrar_override = any(
-        resultado_fetch.estado.get(p) in ("not_found", "error")
-        for p in ("lastfm", "youtube", "setlistfm")
-    )
-    overrides = {}
-    if _mostrar_override:
-        with st.expander(":material/edit: Corregir datos no encontrados", expanded=False):
-            st.caption(
-                "Introduce los valores manualmente para las plataformas no encontradas. "
-                "La feature más importante del modelo es el número de conciertos."
-            )
-            cols_ov = st.columns(3)
-            if resultado_fetch.estado.get("lastfm") in ("not_found", "error"):
-                with cols_ov[0]:
-                    overrides["lfm_oyentes"]   = st.number_input("Oyentes Last.fm",   min_value=0, value=0, step=1000)
-                    overrides["lfm_scrobbles"] = st.number_input("Scrobbles Last.fm", min_value=0, value=0, step=10000)
-            if resultado_fetch.estado.get("youtube") in ("not_found", "error"):
-                with cols_ov[1]:
-                    overrides["yt_suscriptores"]   = st.number_input("Suscriptores YouTube",  min_value=0, value=0, step=1000)
-                    overrides["yt_vistas_totales"]  = st.number_input("Vistas YouTube",        min_value=0, value=0, step=10000)
-            if resultado_fetch.estado.get("setlistfm") in ("not_found", "error"):
-                with cols_ov[2]:
-                    overrides["sl_num_conciertos"] = st.number_input("Nº conciertos (setlist.fm)", min_value=0, value=0, step=1)
-                    overrides["sl_tiene_datos"]    = int(st.checkbox("Aparece en setlist.fm", value=False))
-
+    overrides = {
+        "sp_num_albums":     int(ov_sp_albums),
+        "sp_num_singles":    int(ov_sp_singles),
+        "sp_anos_activo":    float(ov_sp_anos),
+        "lfm_oyentes":       int(ov_lfm_oyentes),
+        "lfm_scrobbles":     int(ov_lfm_scrobbles),
+        "yt_suscriptores":   int(ov_yt_sus),
+        "yt_vistas_totales": int(ov_yt_vistas),
+        "yt_num_videos":     int(ov_yt_videos),
+        "sl_num_conciertos": int(ov_sl_conc),
+        "sl_tiene_datos":    int(ov_sl_conc > 0 or ov_sl_tiene),
+    }
     st.session_state["fetch_features_override"] = overrides
 
     divider()
@@ -506,7 +590,7 @@ if estado == "fetch_completo":
 
     if predecir_btn:
         features_kwargs = resultado_a_features(resultado_fetch)
-        features_kwargs.update(st.session_state.get("fetch_features_override", {}))
+        features_kwargs.update(overrides)
 
         log(f"Predicción automática para: {nombre_clean}", "STEP")
         resultado_pred = predecir(**features_kwargs)
@@ -516,7 +600,7 @@ if estado == "fetch_completo":
         st.session_state["prediccion"] = {
             "resultado":       resultado_pred,
             "nombre":          nombre_clean,
-            "info_conciertos": "",
+            "info_conciertos": ov_info_conc.strip(),
         }
         st.rerun()
 
@@ -526,39 +610,6 @@ if estado == "fetch_completo":
 # ---------------------------------------------------------------------------
 
 divider()
-
-def _src_header(icon: str, title: str, color_hex: str, meta: str = "", url: str = ""):
-    if url:
-        meta_html = (
-            f'<a href="{url}" target="_blank" rel="noopener noreferrer"'
-            f' style="margin-left:auto;font-family:\'JetBrains Mono\';font-size:10.5px;'
-            f'color:#7A7290;text-transform:uppercase;letter-spacing:0.08em;'
-            f'text-decoration:none;display:inline-flex;align-items:center;gap:5px;">'
-            f'{meta}'
-            f'<span style="font-family:\'Material Symbols Rounded\';font-size:13px;vertical-align:-2px;">open_in_new</span>'
-            f'</a>'
-        )
-    else:
-        meta_html = (
-            f'<span style="margin-left:auto;font-family:\'JetBrains Mono\';font-size:10.5px;'
-            f'color:#7A7290;text-transform:uppercase;letter-spacing:0.08em;">{meta}</span>'
-        )
-    st.markdown(
-        f"""
-        <div style="display:flex;align-items:center;gap:12px;margin:18px 0 10px;">
-          <div style="width:34px;height:34px;border-radius:10px;
-                      background:{color_hex}26;color:{color_hex};
-                      display:flex;align-items:center;justify-content:center;
-                      font-family:'Material Symbols Rounded';font-size:18px;">
-            {icon}
-          </div>
-          <h4 style="font-family:'Space Grotesk';font-size:16px;margin:0;">{title}</h4>
-          {meta_html}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
 
 with st.expander(":material/tune: Introducir datos manualmente (modo avanzado)", expanded=False):
     st.caption(

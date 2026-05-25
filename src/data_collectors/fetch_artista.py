@@ -17,7 +17,9 @@ Uso desde Streamlit:
 
 import difflib
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed, wait, FIRST_COMPLETED
+import re
+import unicodedata
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -59,6 +61,15 @@ class ResultadoFetch:
 
 def _sim(a: str, b: str) -> float:
     return difflib.SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio()
+
+
+def _normalizar_nombre(nombre: str) -> str:
+    """Fallback para búsqueda: lowercase + sin tildes + sin caracteres especiales."""
+    nombre = nombre.strip().lower()
+    nfd = unicodedata.normalize("NFD", nombre)
+    sin_tildes = "".join(c for c in nfd if unicodedata.category(c) != "Mn")
+    limpio = re.sub(r"[^\w\s.\-']", "", sin_tildes)
+    return re.sub(r"\s+", " ", limpio).strip()
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +207,10 @@ def _fetch_lastfm(nombre: str, api_key: str) -> dict:
     collector = LastFMCollector()
     datos = collector.buscar_artista(nombre, umbral=0.70)
     if not datos:
+        nombre_norm = _normalizar_nombre(nombre)
+        if nombre_norm != nombre.lower().strip():
+            datos = collector.buscar_artista(nombre_norm, umbral=0.65)
+    if not datos:
         return {}
 
     num_generos = 0
@@ -215,6 +230,10 @@ def _fetch_youtube(nombre: str, api_key: str) -> dict:
 
     collector = YouTubeCollector(api_key=api_key)
     canal = collector.buscar_canal(nombre, umbral=0.50)
+    if not canal:
+        nombre_norm = _normalizar_nombre(nombre)
+        if nombre_norm != nombre.lower().strip():
+            canal = collector.buscar_canal(nombre_norm, umbral=0.45)
     if not canal:
         return {}
 
@@ -239,6 +258,10 @@ def _fetch_setlistfm(nombre: str, api_key: str) -> dict:
     from src.data_collectors.setlistfm import buscar_mbid_por_nombre, obtener_setlists, parsear_setlist
 
     resultado_busqueda = buscar_mbid_por_nombre(nombre)
+    if not resultado_busqueda:
+        nombre_norm = _normalizar_nombre(nombre)
+        if nombre_norm != nombre.lower().strip():
+            resultado_busqueda = buscar_mbid_por_nombre(nombre_norm)
     if not resultado_busqueda:
         return {}
 
@@ -274,56 +297,34 @@ def _fetch_setlistfm(nombre: str, api_key: str) -> dict:
     }
 
 
-def _fetch_tendencias(
-    nombre: str,
-    channel_id: Optional[str],
-    youtube_api_key: Optional[str],
-    timeout: float = 15.0,
-) -> dict:
-    """
-    Instancia TrendReq propio (no compartir entre threads).
-    Google Trends con timeout; si falla, devuelve 0 y continúa con YouTube reciente.
-    """
-    from src.data_collectors.tendencias import get_youtube_reciente
-
-    result = {
-        "trend_gtrends_interes_medio": 0.0,
-        "trend_yt_vistas_recientes":   0.0,
-        "trend_yt_videos_recientes":   0,
-    }
-
-    # Google Trends — puede lanzar rate limit o timeout
+def _fetch_gtrends(nombre: str, timeout: float = 15.0) -> dict:
+    """Solo Google Trends. Sin dependencias externas — se lanza en el pool principal."""
+    result = {"trend_gtrends_interes_medio": 0.0}
     try:
         from pytrends.request import TrendReq
-        import concurrent.futures as _cf
-
-        def _call_trends():
-            pt = TrendReq(hl="es-ES", tz=60, timeout=(8, timeout))
-            pt.build_payload([nombre], geo="ES", timeframe="today 12-m")
-            df = pt.interest_over_time()
-            if not df.empty and nombre in df.columns:
-                return round(float(df[nombre].mean()), 2)
-            return 0.0
-
-        with _cf.ThreadPoolExecutor(max_workers=1) as ex:
-            fut = ex.submit(_call_trends)
-            try:
-                result["trend_gtrends_interes_medio"] = fut.result(timeout=timeout)
-            except Exception:
-                pass
+        pt = TrendReq(hl="es-ES", tz=60, timeout=(8, timeout))
+        pt.build_payload([nombre], geo="ES", timeframe="today 12-m")
+        df = pt.interest_over_time()
+        if not df.empty and nombre in df.columns:
+            result["trend_gtrends_interes_medio"] = round(float(df[nombre].mean()), 2)
     except Exception:
         pass
+    return result
 
-    # YouTube reciente — requiere channel_id
-    if channel_id and youtube_api_key:
-        try:
-            os.environ.setdefault("YOUTUBE_API_KEY", youtube_api_key)
-            yt = get_youtube_reciente(channel_id)
-            result["trend_yt_vistas_recientes"] = float(yt.get("yt_vistas_recientes") or 0)
-            result["trend_yt_videos_recientes"] = int(yt.get("yt_videos_recientes") or 0)
-        except Exception:
-            pass
 
+def _fetch_yt_reciente(channel_id: Optional[str], youtube_api_key: str) -> dict:
+    """YouTube reciente. Requiere channel_id de YouTube — se ejecuta en fase 2."""
+    result = {"trend_yt_vistas_recientes": 0.0, "trend_yt_videos_recientes": 0}
+    if not channel_id or not youtube_api_key:
+        return result
+    try:
+        os.environ.setdefault("YOUTUBE_API_KEY", youtube_api_key)
+        from src.data_collectors.tendencias import get_youtube_reciente
+        yt = get_youtube_reciente(channel_id)
+        result["trend_yt_vistas_recientes"] = float(yt.get("yt_vistas_recientes") or 0)
+        result["trend_yt_videos_recientes"] = int(yt.get("yt_videos_recientes") or 0)
+    except Exception:
+        pass
     return result
 
 
@@ -361,41 +362,50 @@ def fetch_features_por_nombre(
     )
 
     tareas = {}
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    with ThreadPoolExecutor(max_workers=5) as executor:
         if sp_client:
-            tareas["spotify"] = executor.submit(_fetch_spotify, sp_client, spotify_id, nombre_spotify)
+            tareas["spotify"]   = executor.submit(_fetch_spotify, sp_client, spotify_id, nombre_spotify)
         if lastfm_key:
-            tareas["lastfm"] = executor.submit(_fetch_lastfm, nombre_spotify, lastfm_key)
+            tareas["lastfm"]    = executor.submit(_fetch_lastfm, nombre_spotify, lastfm_key)
         if yt_key:
-            tareas["youtube"] = executor.submit(_fetch_youtube, nombre_spotify, yt_key)
+            tareas["youtube"]   = executor.submit(_fetch_youtube, nombre_spotify, yt_key)
         if sl_key:
             tareas["setlistfm"] = executor.submit(_fetch_setlistfm, nombre_spotify, sl_key)
+        if yt_key:
+            tareas["gtrends"]   = executor.submit(_fetch_gtrends, nombre_spotify, tendencias_timeout)
 
-        for plataforma, future in tareas.items():
-            try:
-                datos = future.result(timeout=30)
-                if datos:
-                    resultado.estado[plataforma] = "ok"
-                    setattr(resultado, _plataforma_attr(plataforma), datos)
-                else:
-                    resultado.estado[plataforma] = "not_found"
-                    resultado.advertencias.append(_aviso_not_found(plataforma))
-            except Exception as e:
-                resultado.estado[plataforma] = "error"
-                resultado.advertencias.append(f"{plataforma}: error al conectar ({type(e).__name__})")
+        futures_map = {v: k for k, v in tareas.items()}
+        try:
+            for future in as_completed(futures_map, timeout=35):
+                plataforma = futures_map[future]
+                try:
+                    datos = future.result()
+                    if datos:
+                        resultado.estado[plataforma] = "ok"
+                        if plataforma == "gtrends":
+                            resultado.trend.update(datos)
+                        else:
+                            setattr(resultado, _plataforma_attr(plataforma), datos)
+                    else:
+                        resultado.estado[plataforma] = "not_found"
+                        resultado.advertencias.append(_aviso_not_found(plataforma))
+                except Exception as e:
+                    resultado.estado[plataforma] = "error"
+                    resultado.advertencias.append(f"{plataforma}: error al conectar ({type(e).__name__})")
 
-            if on_progress:
-                on_progress(plataforma, resultado.estado[plataforma], getattr(resultado, _plataforma_attr(plataforma), {}))
+                if on_progress and plataforma != "gtrends":
+                    on_progress(plataforma, resultado.estado[plataforma],
+                                getattr(resultado, _plataforma_attr(plataforma), {}))
+        except TimeoutError:
+            resultado.advertencias.append("Algunas plataformas no respondieron a tiempo (>35 s).")
 
-    # Tendencias: Round 2 (necesita channel_id de YouTube)
+    # Fase 2: YouTube reciente (necesita channel_id resuelto por _fetch_youtube)
     if yt_key:
         channel_id = resultado.yt.get("channel_id")
         try:
-            trend_data = _fetch_tendencias(
-                nombre_spotify, channel_id, yt_key, timeout=tendencias_timeout
-            )
-            resultado.trend = trend_data
-            resultado.estado["tendencias"] = "ok"
+            yt_rec = _fetch_yt_reciente(channel_id, yt_key)
+            resultado.trend.update(yt_rec)
+            resultado.estado["tendencias"] = "ok" if any(resultado.trend.values()) else "not_found"
         except Exception as e:
             resultado.estado["tendencias"] = "error"
             resultado.advertencias.append(f"tendencias: error ({type(e).__name__})")
