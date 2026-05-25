@@ -23,14 +23,17 @@ src/
   data_collectors/   # Clientes de API para ingesta de datos raw
     spotify.py           # Búsqueda de artistas en Spotify (usado solo por el resolver)
     spotify_features.py  # Discografía y top tracks usando IDs del registry
-    lastfmapi.py         # Oyentes, scrobbles y géneros usando nombres del registry
-    youtube.py           # Estadísticas de canal usando channel_id del registry
+    lastfmapi.py         # Oyentes, scrobbles y géneros; fuzzy search con difflib (umbral 0.70)
+    youtube.py           # Estadísticas de canal; fuzzy search con difflib (umbral 0.55)
     setlistfm.py         # Historial de conciertos usando MBID del registry
     tendencias.py        # Google Trends + YouTube reciente
+    fetch_artista.py     # ★ Orquestador para predicción interactiva: busca en Spotify,
+                         #   desambigúa con Groq si hay empate, llama a las 5 APIs en paralelo
+                         #   (ThreadPoolExecutor + as_completed) y normaliza nombres
   features/          # Ingeniería de características y preprocesado
   models/            # Entrenamiento, evaluación y serialización de modelos
     train.py         # Entrena XGBoost tuned y serializa modelo + metadata
-    predict.py       # Inferencia: 8 inputs → 32 features → tier predicho
+    predict.py       # Inferencia: inputs → 32 features → tier predicho
     shap_explainer.py# Explicabilidad SHAP: plots globales e individuales
   agents/
     explicador.py    # Agente LangChain: explicación inicial + chat de seguimiento
@@ -451,7 +454,6 @@ El `metadata.json` es el contrato entre el modelo y el dashboard: garantiza que 
 ### Inferencia — `predict.py`
 
 Módulo de inferencia que expone `predecir()` para el dashboard y el agente IA.
-El usuario solo proporciona **8 campos accesibles**; el resto se calcula o imputa automáticamente.
 
 ```bash
 python -m src.models.predict   # prueba rápida con artista ficticio
@@ -470,21 +472,23 @@ resultado = predecir(
 # → {"nivel": "bajo", "probabilidades": {"bajo": 0.893, "medio": 0.069, "alto": 0.038}, "features": {...}}
 ```
 
-**Campos que pide al usuario:**
+**Campos directos** (todos tienen defaults — retrocompatible):
 
-| Campo | Feature(s) del modelo |
-|-------|----------------------|
-| Nº álbumes / singles | `sp_num_albums`, `sp_num_singles` |
-| Años activo en Spotify | `sp_anos_activo` |
-| Oyentes Last.fm | `lfm_oyentes`, `lfm_oyentes_log` |
-| Scrobbles Last.fm | `lfm_scrobbles`, `lfm_scrobbles_log`, `lfm_scrobbles_por_oyente` |
-| Suscriptores YouTube | `yt_suscriptores`, `yt_suscriptores_log` |
-| Vistas totales YouTube | `yt_vistas_totales`, `yt_vistas_log`, `yt_vistas_por_suscriptor` |
-| Nº conciertos + aparece en setlist.fm | `sl_num_conciertos`, `sl_num_paises`, `sl_pct_espana`, `sl_tiene_datos` |
+| Campo | Feature(s) del modelo | Fuente en flujo automático |
+|-------|----------------------|---------------------------|
+| Nº álbumes / singles | `sp_num_albums`, `sp_num_singles` | Spotify (discografía) |
+| Años activo en Spotify | `sp_anos_activo` | Spotify |
+| `sp_avg_duration_ms` | duración media tracks | Spotify (top tracks) |
+| `sp_pct_explicit` | % explicit | Spotify (top tracks) |
+| `sp_pct_colabs` | % colaboraciones | Spotify (top tracks) |
+| Oyentes / Scrobbles Last.fm | `lfm_oyentes`, `lfm_scrobbles`, `lfm_num_generos` | Last.fm |
+| Suscriptores / Vistas / Vídeos YouTube | `yt_suscriptores`, `yt_vistas_totales`, `yt_num_videos` | YouTube |
+| Nº conciertos + extras setlist.fm | `sl_num_conciertos`, `sl_avg_canciones`, `sl_pct_encore`, `sl_num_paises`, `sl_pct_espana`, `sl_tiene_datos` | setlist.fm |
+| Tendencias | `trend_gtrends_interes_medio`, `trend_yt_vistas_recientes`, `trend_yt_videos_recientes` | Google Trends + YouTube reciente |
 
 **Campos calculados automáticamente:** `sp_releases_por_ano`, `sp_ratio_albums_singles`, ratios y logs derivados.
 
-**Campos imputados con valores neutros:** `sp_avg_duration_ms` (210.000 ms), `sp_pct_explicit` (0.6), `sp_pct_colabs` (0.3), tendencias → 0, `sl_tiene_datos` → 0 si no se indica (sobrescrito automáticamente a 1 si `sl_num_conciertos > 0`).
+**Defaults cuando no se proporcionan valores:** `sp_avg_duration_ms=210.000 ms`, `sp_pct_explicit=0.6`, `sp_pct_colabs=0.3`, tendencias → 0. `sl_tiene_datos` se fuerza a 1 automáticamente si `sl_num_conciertos > 0`.
 
 El campo de texto libre "info del artista" (salas, ciudades, etc.) no entra en el modelo — lo usa el agente LangChain para contextualizar la explicación.
 
@@ -521,13 +525,35 @@ Ambos plots se renderizan automáticamente en el dashboard:
 streamlit run app.py
 ```
 
-Para ejecutar localmente la página de Análisis IA, crea un archivo `.env` en la raíz con:
+Para ejecutar localmente crea un archivo `.env` en la raíz con todas las claves. El `.env` está en `.gitignore` — nunca se commitea.
 
-```
-GROQ_API_KEY=tu_clave_groq
+### Variables de entorno requeridas
+
+| Variable | Descripción | Requerida para |
+|----------|-------------|----------------|
+| `SPOTIFY_CLIENT_ID` | Client ID de la app en Spotify for Developers | Flujo automático de predicción |
+| `SPOTIFY_CLIENT_SECRET` | Client Secret de Spotify | Flujo automático de predicción |
+| `LASTFM_API_KEY` | API key de Last.fm | Flujo automático de predicción |
+| `YOUTUBE_API_KEY` | API key de YouTube Data API v3 | Flujo automático + tendencias |
+| `SETLIST_FM_API_KEY` | API key de setlist.fm | Flujo automático de predicción |
+| `GROQ_API_KEY` | API key de Groq (LLM) | Análisis IA + desambiguación Spotify |
+
+Las páginas **📊 Resultados** y el modelo funcionan sin ninguna clave. El flujo automático de predicción degrada graciosamente si alguna clave falta (la plataforma queda como "skipped").
+
+### Despliegue en Streamlit Cloud
+
+En **App settings → Secrets** del dashboard de Streamlit Cloud, añadir en formato TOML:
+
+```toml
+SPOTIFY_CLIENT_ID     = "..."
+SPOTIFY_CLIENT_SECRET = "..."
+LASTFM_API_KEY        = "..."
+YOUTUBE_API_KEY       = "..."
+SETLIST_FM_API_KEY    = "..."
+GROQ_API_KEY          = "..."
 ```
 
-En Streamlit Cloud la clave se configura en **Settings → Secrets** del dashboard de la app; las páginas 1 y 2 funcionan sin ella.
+Cada push a `main` dispara un redeploy automático.
 
 ### Sistema de diseño (`styles.py`)
 
@@ -546,18 +572,30 @@ El tema base se fija en `.streamlit/config.toml`; `styles.py` lo extiende con CS
 |--------|---------|-------------|
 | 🏠 Landing | `app.py` | Métricas del modelo, tier system con chips visuales, tarjetas de navegación y hero |
 | 📊 Resultados | `pages/1_Resultados.py` | Benchmark de 8 modelos, XGBoost base vs tuned, confusión OOF, feature importance (RF · XGBoost · **SHAP global**) |
-| 🎤 Predicción | `pages/2_Prediccion.py` | Formulario agrupado por fuente con **enlaces directos** a Spotify, Last.fm, YouTube y setlist.fm · traza del pipeline · resultado con probabilidades · **alertas de inconsistencias** · **waterfall SHAP** |
+| 🎤 Predicción | `pages/2_Prediccion.py` | **Flujo automático**: escribe el nombre → Spotify busca y auto-confirma (score ≥ 90%) o muestra selector con sugerencia de IA · 5 APIs en paralelo con progreso en tiempo real · datos editables antes de predecir · resultado con probabilidades · **alertas de inconsistencias** · **waterfall SHAP** |
 | 🤖 Análisis IA | `pages/3_Analisis_IA.py` | Explicación estructurada en 3 secciones + chat de seguimiento con historial · requiere `GROQ_API_KEY` |
 
 ### Flujo de uso
 
-1. **🎤 Predicción** — rellena los campos del artista (todos opcionales) y pulsa *Predecir tier de sala*. El resultado se guarda en `st.session_state`. Cada cabecera de sección enlaza directamente a la plataforma correspondiente para facilitar la búsqueda de datos.
-2. **🤖 Análisis IA** — el agente genera automáticamente una explicación y permite hacer preguntas de seguimiento.
-3. **🔄 Nueva predicción** — botón en la barra lateral que limpia el estado y permite analizar otro artista sin recargar la app.
+**Modo automático (recomendado):**
 
-### Traza en tiempo real
+1. **Escribe el nombre del artista** — Spotify busca candidatos con fuzzy matching.
+   - Score ≥ 90% y diferencia > 5% sobre el segundo: se auto-confirma sin preguntar.
+   - Empate (diferencia ≤ 5%): se muestra un selector con imagen y géneros; si `GROQ_API_KEY` está configurada, Llama 3.3 70B sugiere cuál es el artista de rap español.
+2. **Obtención de datos en paralelo** — `fetch_artista.py` llama a las 5 APIs simultáneamente con `ThreadPoolExecutor`. El progreso se muestra en tiempo real conforme cada plataforma responde (en orden de llegada, no de inserción). Si alguna plataforma usa un nombre ligeramente distinto, se reintenta automáticamente con el nombre normalizado (sin tildes, sin caracteres especiales).
+3. **Revisar y editar** — todos los valores obtenidos aparecen en campos editables pre-rellenados. Se pueden corregir antes de predecir. Las plataformas no encontradas quedan a 0 pero son igualmente editables.
+4. **🤖 Análisis IA** — el agente genera automáticamente una explicación y permite hacer preguntas de seguimiento.
+5. **🔄 Nueva predicción** — botón que limpia el estado y permite analizar otro artista sin recargar la app.
 
-Cada operación muestra un panel `st.status()` expandido con todos los pasos: inputs recibidos → features calculadas → modelo cargado → probabilidades → respuesta del LLM. Los inputs se muestran con nombres legibles (no técnicos). El log de sesión (barra lateral) acumula todos los eventos con timestamp e icono de nivel (`ℹ️ OK ✅ API 🌐 ML 🤖 DATA 📊`).
+**Modo manual (avanzado):**
+
+Disponible en el expander *"Introducir datos manualmente"* en la misma página. Útil cuando la búsqueda automática no encuentra el artista o se quieren introducir datos directamente.
+
+### Indicador de pasos y traza en tiempo real
+
+La página de predicción muestra en todo momento en qué fase del proceso se encuentra el usuario mediante un indicador visual de 3 pasos (● Buscar artista → ◉ Revisar datos → ○ Predicción).
+
+El panel `st.status()` durante la obtención de datos muestra cada plataforma conforme termina (no en orden fijo), con el resumen de los datos encontrados o el motivo del fallo. El log de sesión (barra lateral) acumula todos los eventos con timestamp e icono de nivel (`ℹ️ OK ✅ API 🌐 ML 🤖 DATA 📊`).
 
 ### Alertas e inconsistencias (`src/utils/feature_labels.py`)
 
@@ -694,9 +732,14 @@ Spotify bloqueó estos endpoints en noviembre 2024, incluso con OAuth. `populari
 
 ### Matching de artistas
 
-`scripts/00_resolver_identidades.py` usa **fuzzy matching** con umbrales altos (80% para Spotify/Last.fm/setlist.fm, 65% para YouTube). Los artistas que no superan el umbral se escriben en `pendientes_revision.csv` para revisión manual. Una vez resueltos, se añaden al registry con `manual_override=True`.
+**Pipeline batch** (`scripts/00_resolver_identidades.py`): usa fuzzy matching con umbrales altos (80% para Spotify/Last.fm/setlist.fm, 65% para YouTube). Los artistas que no superan el umbral se escriben en `pendientes_revision.csv` para revisión manual. Una vez resueltos, se añaden al registry con `manual_override=True`. Los colectores batch no hacen búsquedas: usan los IDs del registry directamente.
 
-Los colectores de datos no hacen búsquedas: usan los IDs del registry directamente, eliminando los falsos positivos por completo en ejecuciones posteriores.
+**Predicción interactiva** (`src/data_collectors/fetch_artista.py`): estrategia diferente, pensada para nombres arbitrarios en tiempo real:
+
+1. **Spotify como ancla** — se busca el nombre en Spotify para obtener el nombre oficial y el `spotify_id`. Umbral de auto-confirmación: score ≥ 90% y diferencia > 5% sobre el segundo candidato.
+2. **Desambiguación con Groq** — si los dos primeros candidatos tienen scores a ≤ 5 puntos, Llama 3.3 70B elige el candidato de rap español más probable.
+3. **Búsqueda fuzzy por nombre en cada plataforma** — Last.fm (umbral 0.70), YouTube (0.55), setlist.fm (0.60). Si falla, se reintenta con el nombre normalizado (`_normalizar_nombre()`: sin tildes, sin caracteres especiales).
+4. **Corrección manual inline** — si alguna plataforma no encuentra el artista, los campos correspondientes aparecen editables en la UI antes de predecir.
 
 ### Imputación de setlist.fm — artefacto detectado y corregido
 
