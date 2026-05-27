@@ -655,6 +655,12 @@ with st.expander(":material/tune: Introducir datos manualmente (modo avanzado)",
                 "El artista aparece en setlist.fm",
                 value=False,
             )
+            sl_actuo_sin_datos = st.checkbox(
+                "Ha actuado en directo (sin datos exactos)",
+                value=False,
+                help="Activa el flag de 'tiene historial de directos' aunque no haya datos en setlist.fm. "
+                     "Útil cuando sabes que el artista actúa en vivo pero no está documentado.",
+            )
             sl_num_conciertos = st.number_input(
                 "Nº conciertos documentados",
                 min_value=0, value=0, step=1,
@@ -687,7 +693,7 @@ with st.expander(":material/tune: Introducir datos manualmente (modo avanzado)",
                 "yt_vistas_totales": int(yt_vistas_totales),
                 "yt_num_videos":     int(yt_num_videos),
                 "sl_num_conciertos": int(sl_num_conciertos),
-                "sl_tiene_datos":    1 if int(sl_num_conciertos) > 0 else int(sl_tiene_datos),
+                "sl_tiene_datos":    1 if int(sl_num_conciertos) > 0 or sl_actuo_sin_datos else int(sl_tiene_datos),
             }
             st.write("**1 · Construyendo vector de features…**")
             features = construir_features(**inputs_raw)

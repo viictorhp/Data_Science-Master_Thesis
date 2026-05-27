@@ -38,9 +38,9 @@ FEATURE_LABELS: dict[str, str] = {
     # setlist.fm — conciertos
     "sl_num_conciertos":        "Conciertos documentados en setlist.fm",
     "sl_avg_canciones":         "Canciones medias por concierto",
-    "sl_pct_encore":            "Conciertos con encore",
+    "sl_pct_encore":            "Porcentaje de conciertos con encore",
     "sl_num_paises":            "Países donde ha actuado",
-    "sl_pct_espana":            "Conciertos en España",
+    "sl_pct_espana":            "Porcentaje de conciertos en España",
     "sl_tiene_datos":           "Aparece en setlist.fm",
     # Tendencias
     "trend_gtrends_interes_medio":        "Interés de búsqueda en Google (últimos 12 meses)",
@@ -264,6 +264,18 @@ def detectar_alertas(features: dict, nivel: str, proba: dict) -> list[dict]:
                 f"**Ritmo de lanzamientos muy alto ({rpm:.0f} lanzamientos/año).**  \n"
                 "Esto puede indicar que los 'años en activo' están subestimados, "
                 "o que los datos de Spotify incluyen recopilaciones o colaboraciones."
+            ),
+        })
+
+    # ── Conciertos manuales pero sin perfil en setlist.fm ────────────────────
+    if sl_c > 0 and sl_td == 0:
+        alertas.append({
+            "tipo": "info",
+            "msg": (
+                f"**{sl_c:.0f} concierto{'s' if sl_c != 1 else ''} introducido{'s' if sl_c != 1 else ''} manualmente, "
+                "pero el artista no aparece en setlist.fm.**  \n"
+                "Los conciertos documentados en setlist.fm tienen mayor peso en el modelo que los introducidos a mano. "
+                "Si el artista tiene perfil bajo otro nombre, buscar y añadir esos datos mejoraría la predicción."
             ),
         })
 
