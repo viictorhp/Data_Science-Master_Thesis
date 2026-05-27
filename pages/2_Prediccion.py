@@ -193,7 +193,9 @@ def _render_resultado(nombre_clean: str, resultado: dict, info_conciertos: str =
         st.pyplot(shap_fig, use_container_width=True)
         plt.close(shap_fig)
     except FileNotFoundError:
-        st.info("Modelo no disponible. Ejecuta `python -m src.models.train`.", icon=":material/info:")
+        st.info("El gráfico SHAP no está disponible — el modelo necesita ser entrenado.", icon=":material/info:")
+    except Exception as _shap_e:
+        st.info(f"No se pudo generar el gráfico SHAP: `{type(_shap_e).__name__}`", icon=":material/info:")
 
     divider()
     st.success(
@@ -593,7 +595,18 @@ if estado == "fetch_completo":
         features_kwargs.update(overrides)
 
         log(f"Predicción automática para: {nombre_clean}", "STEP")
-        resultado_pred = predecir(**features_kwargs)
+        try:
+            resultado_pred = predecir(**features_kwargs)
+        except FileNotFoundError:
+            st.error(
+                "El modelo no está disponible. Entrénalo ejecutando `python -m src.models.train`.",
+                icon=":material/error:",
+            )
+            st.stop()
+        except Exception as _e:
+            log(f"Error en predicción: {_e}", "ERR")
+            st.error(f"Error al calcular la predicción: `{type(_e).__name__}: {_e}`", icon=":material/error:")
+            st.stop()
         nivel = resultado_pred["nivel"]
         log(f"Predicción: {nivel.upper()}", "OK")
 

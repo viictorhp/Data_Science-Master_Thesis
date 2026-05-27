@@ -16,7 +16,19 @@ from styles import (
 st.set_page_config(page_title="Resultados · TFM", page_icon="📊", layout="wide")
 inject_styles()
 
-FIGURES = Path("reports/figures")
+FIGURES = Path(__file__).parent.parent / "reports" / "figures"
+
+
+def _img(filename: str, caption: str = "", **kwargs) -> None:
+    """Muestra una imagen con manejo de error si el archivo no existe."""
+    p = FIGURES / filename
+    if p.exists():
+        st.image(str(p), caption=caption, use_container_width=True, **kwargs)
+    else:
+        st.info(
+            f"Imagen `{filename}` no encontrada — ejecuta el pipeline para regenerarla.",
+            icon=":material/image_not_supported:",
+        )
 
 # ---------------------------------------------------------------------------
 # Sidebar
@@ -65,7 +77,7 @@ divider()
 section_label("01 · COMPARATIVA DE MODELOS", icon="leaderboard")
 st.markdown("##### F1 macro con StratifiedKFold k=5 · banda = desviación estándar")
 
-st.image(str(FIGURES / "comparativa_modelos.png"), use_container_width=True)
+_img("comparativa_modelos.png")
 
 st.markdown("""
 | Modelo | Features | Accuracy CV5 | F1 macro CV5 | Estabilidad |
@@ -89,7 +101,7 @@ divider()
 section_label("02 · XGBOOST — BASE vs TUNED", icon="tune")
 st.markdown("##### RandomizedSearchCV · 100 iteraciones × CV5 = 500 fits · optimizado por F1 macro")
 
-st.image(str(FIGURES / "xgb_base_vs_tuned.png"), use_container_width=True)
+_img("xgb_base_vs_tuned.png")
 
 st.info(
     "**Parámetros clave del modelo tuned:** `learning_rate=0.01` · `min_child_weight=10` · "
@@ -109,7 +121,7 @@ st.markdown("##### Cada artista predicho por un modelo que no lo vio en entrenam
 
 col_cm, col_info = st.columns([1, 1])
 with col_cm:
-    st.image(str(FIGURES / "confusion_matrix.png"), use_container_width=True)
+    _img("confusion_matrix.png")
 with col_info:
     st.markdown(f'#### Análisis por clase')
 
@@ -164,7 +176,7 @@ tab_top10, tab_rf, tab_xgb, tab_shap = st.tabs([
 ])
 
 with tab_top10:
-    st.image(str(FIGURES / "feature_importance_top10.png"), use_container_width=True)
+    _img("feature_importance_top10.png")
     st.markdown("""
 **Consenso RF + XGBoost:**
 
@@ -177,7 +189,7 @@ Las features de tendencias recientes tienen importancia secundaria.
 """)
 
 with tab_rf:
-    st.image(str(FIGURES / "feature_importance_rf.png"), use_container_width=True)
+    _img("feature_importance_rf.png")
 
 with tab_xgb:
     st.image(str(FIGURES / "feature_importance_xgb.png"), use_container_width=True)
@@ -189,9 +201,9 @@ with tab_shap:
     if SHAP_BAR.exists() and SHAP_BEE.exists():
         col_bar, col_bee = st.columns(2)
         with col_bar:
-            st.image(str(SHAP_BAR), caption="Media |SHAP| global (todas las clases)", use_container_width=True)
+            _img("shap_summary_bar.png", caption="Media |SHAP| global (todas las clases)")
         with col_bee:
-            st.image(str(SHAP_BEE), caption="Beeswarm — Clase ALTO", use_container_width=True)
+            _img("shap_beeswarm_alto.png", caption="Beeswarm — Clase ALTO")
 
         st.markdown("""
 **Cómo leer estos plots**
@@ -209,6 +221,7 @@ with tab_shap:
 """)
     else:
         st.info(
-            "Los plots SHAP aún no se han generado. Ejecuta `python -m scripts.generar_shap` y recarga.",
+            "Los plots SHAP globales aún no se han generado. "
+            "Ejecuta `python scripts/generar_shap.py` desde la raíz del proyecto y recarga la página.",
             icon=":material/info:",
         )

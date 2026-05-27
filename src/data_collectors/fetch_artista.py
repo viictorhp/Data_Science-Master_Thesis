@@ -159,9 +159,14 @@ def desambiguar_con_groq(
             api_key=groq_api_key,
         )
         respuesta = llm.invoke(messages).content.strip()
-        idx = int(respuesta.strip()[0]) - 1
+        primer_char = respuesta[0] if respuesta else ""
+        if not primer_char.isdigit():
+            print(f"  [Groq desambiguación] respuesta inesperada: {respuesta[:60]!r}")
+            return None
+        idx = int(primer_char) - 1
         if 0 <= idx < len(candidatos):
             return candidatos[idx]
+        print(f"  [Groq desambiguación] índice fuera de rango: {idx} (hay {len(candidatos)} candidatos)")
     except Exception as e:
         print(f"  [Groq desambiguación] error: {e}")
     return None

@@ -9,11 +9,34 @@ Rediseño visual con identidad propia ("Studio"):
 La lógica de modelo es la misma del proyecto original — sólo cambia la UI.
 """
 
+import json
+from pathlib import Path
+
 import streamlit as st
 from styles import (
     inject_styles, page_header, hero, nav_card,
     brand_block, section_label, divider, tier_chip,
 )
+
+# ---------------------------------------------------------------------------
+# Carga dinámica de metadatos del modelo
+# ---------------------------------------------------------------------------
+def _load_meta() -> dict:
+    meta_path = Path(__file__).parent / "models" / "metadata.json"
+    try:
+        with open(meta_path, encoding="utf-8") as _f:
+            return json.load(_f)
+    except Exception:
+        return {}
+
+_META = _load_meta()
+_ACC   = f"{_META.get('cv5_metrics', {}).get('acc_mean', 0.682) * 100:.1f} %"
+_F1    = f"{_META.get('cv5_metrics', {}).get('f1_mean',  0.666) * 100:.1f} %"
+_ACC_D = f"+{(_META.get('cv5_metrics', {}).get('acc_mean', 0.682) - 0.395) * 100:.1f} pts vs base"
+_F1_D  = f"+{(_META.get('cv5_metrics', {}).get('f1_mean',  0.666) - 0.189) * 100:.1f} pts vs base"
+_N     = str(_META.get("n_samples", 182))
+_NFEAT = str(_META.get("n_features", 32))
+_DIST  = _META.get("class_distribution", {"bajo": 81, "medio": 62, "alto": 39})
 
 st.set_page_config(
     page_title="Tier Predictor · TFM",
@@ -43,12 +66,12 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
     st.markdown(
-        '<div style="font-family:\'JetBrains Mono\';font-size:11px;color:#7A7290;line-height:1.7;'
-        'padding:8px 4px;">'
-        '<b style="color:#B6ADCB;">182</b> artistas · <b style="color:#B6ADCB;">32</b> features<br>'
-        '<b style="color:#B6ADCB;">Acc 68.2%</b> · <b style="color:#B6ADCB;">F1 66.6%</b><br>'
-        'CV5 estratificado · k=5'
-        '</div>',
+        f'<div style="font-family:\'JetBrains Mono\';font-size:11px;color:#7A7290;line-height:1.7;'
+        f'padding:8px 4px;">'
+        f'<b style="color:#B6ADCB;">{_N}</b> artistas · <b style="color:#B6ADCB;">{_NFEAT}</b> features<br>'
+        f'<b style="color:#B6ADCB;">Acc {_ACC}</b> · <b style="color:#B6ADCB;">F1 {_F1}</b><br>'
+        f'CV5 estratificado · k=5'
+        f'</div>',
         unsafe_allow_html=True,
     )
 
@@ -94,10 +117,10 @@ with c_b:
 # ---------------------------------------------------------------------------
 section_label("Resumen del modelo", icon="dashboard")
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("Artistas dataset", "182", "Bajo 81 · Med 62 · Alto 39")
-m2.metric("Accuracy CV5", "68.2 %", "+5.0 pts vs base")
-m3.metric("F1 macro", "66.6 %", "+6.3 pts vs base")
-m4.metric("Features", "32", "4 fuentes · 8 ratios")
+m1.metric("Artistas dataset", _N, f"Bajo {_DIST['bajo']} · Med {_DIST['medio']} · Alto {_DIST['alto']}")
+m2.metric("Accuracy CV5", _ACC, _ACC_D)
+m3.metric("F1 macro", _F1, _F1_D)
+m4.metric("Features", _NFEAT, "4 fuentes · 8 ratios")
 
 # ---------------------------------------------------------------------------
 # Tarjetas de navegación
@@ -142,9 +165,9 @@ section_label("El problema", icon="diamond")
 st.markdown("Tres tiers de sala definidos por aforo y contexto del circuito urbano español.")
 
 TIERS_INFO = [
-    ("bajo",  "01", "< 200 personas",  "Sala Víbora, locales pequeños, artistas sin sala propia", "81"),
-    ("medio", "02", "200 – 2 000",     "Planta Baja, La Riviera, Razzmatazz",                     "62"),
-    ("alto",  "03", "> 2 000",         "WiZink, Movistar Arena, festivales (Sonorama, RBF…)",     "39"),
+    ("bajo",  "01", "< 200 personas",  "Sala Víbora, locales pequeños, artistas sin sala propia", str(_DIST["bajo"])),
+    ("medio", "02", "200 – 2 000",     "Planta Baja, La Riviera, Razzmatazz",                     str(_DIST["medio"])),
+    ("alto",  "03", "> 2 000",         "WiZink, Movistar Arena, festivales (Sonorama, RBF…)",     str(_DIST["alto"])),
 ]
 for nivel, num, aforo, ejemplos, n in TIERS_INFO:
     st.markdown(
@@ -166,7 +189,7 @@ for nivel, num, aforo, ejemplos, n in TIERS_INFO:
     )
 
 st.markdown(
-    '<p style="font-family:\'JetBrains Mono\';font-size:11px;color:#7A7290;margin-top:6px;">'
-    '182 artistas · clase mayoritaria 44.5 % (referencia para baseline).</p>',
+    f'<p style="font-family:\'JetBrains Mono\';font-size:11px;color:#7A7290;margin-top:6px;">'
+    f'{_N} artistas · clase mayoritaria {int(_DIST["bajo"]) / int(_N) * 100:.1f} % (referencia para baseline).</p>',
     unsafe_allow_html=True,
 )

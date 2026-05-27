@@ -84,12 +84,18 @@ def train():
     joblib.dump(model, model_path)
     print(f"  Guardado: {model_path}")
 
+    dist_counts = y_xgb.value_counts().sort_index()
     metadata = {
         "trained_at": datetime.now().isoformat(),
         "n_samples": int(X.shape[0]),
         "n_features": int(X.shape[1]),
         "features": list(features),
         "target_encoding": {"0": "bajo", "1": "medio", "2": "alto"},
+        "class_distribution": {
+            "bajo":  int(dist_counts.get(0, 0)),
+            "medio": int(dist_counts.get(1, 0)),
+            "alto":  int(dist_counts.get(2, 0)),
+        },
         "params": BEST_PARAMS,
         "cv5_metrics": metricas,
     }
