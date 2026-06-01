@@ -26,8 +26,9 @@ MODELS_DIR = Path(__file__).parent.parent.parent / "models"
 
 LABEL_MAP = {0: "bajo", 1: "medio", 2: "alto"}
 
-# Medianas del dataset de entrenamiento para campos secundarios no pedidos al usuario.
-# Permiten una imputación más realista que el 0 para artistas con algo de presencia.
+# Medianas del dataset de entrenamiento para campos secundarios.
+# NOTA: resultado_a_features() pasa 0 explícito cuando la plataforma no se encuentra,
+# por lo que estos defaults solo aplican a llamadas directas a predecir() (tests, uso manual).
 _DEFAULTS = {
     "sp_avg_duration_ms": 210_000,  # ~3:30 min, típico rap/urbano español
     "sp_pct_explicit":    0.6,       # mediana dataset — mayoría de rap es explicit

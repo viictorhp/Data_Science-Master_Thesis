@@ -138,7 +138,7 @@ def _render_resultado(nombre_clean: str, resultado: dict, info_conciertos: str =
                            border-radius:6px;padding:2px 8px;font-size:10px;letter-spacing:0.1em;">{conf_label}</span>
             </div>
             <h3 style="font-family:'Space Grotesk';font-size:32px;margin:8px 0 6px;letter-spacing:-0.02em;">
-              {nombre_clean} &nbsp;·&nbsp; tier <span style="color:{color};">{nivel.upper()}</span>
+              {nombre_clean} &nbsp;·&nbsp; nivel de sala <span style="color:{color};">{nivel.upper()}</span>
             </h3>
             <p style="margin:0;color:#B6ADCB;font-size:14px;">{TIER_DESC[nivel]}</p>
           </div>
@@ -152,7 +152,7 @@ def _render_resultado(nombre_clean: str, resultado: dict, info_conciertos: str =
 
     alertas = detectar_alertas(features, nivel, proba)
     if alertas:
-        section_label("AVISOS DEL MODELO", icon="bolt")
+        section_label("AVISOS DEL ANÁLISIS", icon="bolt")
         for alerta in alertas:
             if alerta["tipo"] == "warning":
                 st.warning(alerta["msg"], icon=":material/warning:")
@@ -160,10 +160,10 @@ def _render_resultado(nombre_clean: str, resultado: dict, info_conciertos: str =
                 st.info(alerta["msg"], icon=":material/info:")
 
     divider()
-    with st.expander(":material/database:  Ver todas las variables enviadas al modelo (32 variables)"):
+    with st.expander(":material/database:  Ver todos los datos recopilados (32 valores)"):
         st.caption(
-            "Cada sección muestra las variables de una fuente de datos. "
-            "Las marcadas como *(calculado)* o *(interno)* son transformaciones matemáticas."
+            "Cada sección muestra los datos de una fuente. "
+            "Los marcados como *(calculado)* se obtienen combinando otros datos."
         )
         for nombre_grupo, keys in GRUPOS_DISPLAY:
             st.markdown(f"**{nombre_grupo}**")
@@ -177,29 +177,29 @@ def _render_resultado(nombre_clean: str, resultado: dict, info_conciertos: str =
             if rows_main:
                 st.dataframe(pd.DataFrame(rows_main), hide_index=True, use_container_width=True)
             if rows_tech:
-                with st.expander(f"Variables internas ({len(rows_tech)})", expanded=False):
+                with st.expander(f"Datos auxiliares ({len(rows_tech)})", expanded=False):
                     st.dataframe(pd.DataFrame(rows_tech), hide_index=True, use_container_width=True)
             st.markdown("")
 
     divider()
-    section_label("¿POR QUÉ ESTA PREDICCIÓN?  ·  EXPLICACIÓN SHAP", icon="find_in_page")
+    section_label("¿POR QUÉ ESTA PREDICCIÓN?", icon="find_in_page")
     st.caption(
-        "Cada barra muestra cuánto empuja una variable la predicción hacia el tier predicho. "
-        "Verde = empuja hacia arriba · Rosa = empuja hacia abajo."
+        "Cada barra muestra cuánto influye ese dato en el resultado final. "
+        "Verde = sube el resultado · Rosa = lo baja."
     )
     try:
-        with st.spinner("Calculando valores SHAP…"):
+        with st.spinner("Analizando la predicción…"):
             shap_fig, _ = shap_waterfall_fig(features)
         st.pyplot(shap_fig, use_container_width=True)
         plt.close(shap_fig)
     except FileNotFoundError:
-        st.info("El gráfico SHAP no está disponible — el modelo necesita ser entrenado.", icon=":material/info:")
+        st.info("El desglose no está disponible. Contacta con el administrador para activarlo.", icon=":material/info:")
     except Exception as _shap_e:
-        st.info(f"No se pudo generar el gráfico SHAP: `{type(_shap_e).__name__}`", icon=":material/info:")
+        st.info("No se pudo generar el desglose de la predicción.", icon=":material/info:")
 
     divider()
     st.success(
-        "Predicción guardada. Ve a **Análisis IA** para que el agente te explique el resultado.",
+        "Predicción guardada. Ve a **Análisis IA** para que la IA te explique el resultado.",
         icon=":material/auto_awesome:",
     )
     c_new, _ = st.columns([1, 3])
@@ -338,7 +338,7 @@ if estado == "idle":
                 and candidatos[0].score - candidatos[1].score <= 0.05
                 and os.getenv("GROQ_API_KEY")
             ):
-                with st.spinner("Consultando IA para desambiguar candidatos…"):
+                with st.spinner("Pidiendo a la IA que ayude a elegir…"):
                     try:
                         groq_sugerido = desambiguar_con_groq(nombre_q, candidatos, os.getenv("GROQ_API_KEY"))
                     except Exception:
@@ -390,11 +390,10 @@ elif estado == "candidatos_listos":
             st.image(candidato_sel.imagen_url, width=80)
         with col_info:
             st.markdown(
-                f"**{candidato_sel.nombre_spotify}** · score {candidato_sel.score:.0%}  \n"
-                f"`ID: {candidato_sel.spotify_id}`"
+                f"**{candidato_sel.nombre_spotify}** · coincidencia {candidato_sel.score:.0%}"
             )
     else:
-        st.caption(f"Spotify ID: {candidato_sel.spotify_id}  ·  score {candidato_sel.score:.0%}")
+        st.caption(f"Coincidencia: {candidato_sel.score:.0%}")
 
     c_conf, c_back = st.columns([2, 1])
     with c_conf:
@@ -417,7 +416,7 @@ def _resumen_plataforma(plataforma: str, datos: dict) -> str:
     if plataforma == "lastfm":
         return (
             f"{int(datos.get('lfm_oyentes', 0)):,} oyentes · "
-            f"{int(datos.get('lfm_scrobbles', 0)):,} scrobbles"
+            f"{int(datos.get('lfm_scrobbles', 0)):,} escuchas"
         )
     if plataforma == "youtube":
         return (
@@ -477,6 +476,24 @@ if estado == "confirmado":
     estado = "fetch_completo"
 
 
+def _aviso_datos_por_defecto(plataforma: str, estado_plat: str) -> None:
+    """Muestra un caption informativo cuando los datos de una plataforma no son reales."""
+    if estado_plat == "ok":
+        return
+    _nombres = {
+        "lastfm": "Last.fm", "youtube": "YouTube",
+        "setlistfm": "setlist.fm", "spotify": "Spotify", "tendencias": "Tendencias",
+    }
+    _msgs = {
+        "not_found": "Artista no encontrado en {p} — los campos muestran 0 por defecto. Edítalos si tienes los datos reales.",
+        "error":     "Error al conectar con {p} — los campos muestran 0 por defecto.",
+        "skipped":   "API de {p} no configurada — los campos muestran 0. Introdúcelos manualmente si los conoces.",
+    }
+    nombre_plat = _nombres.get(plataforma, plataforma.capitalize())
+    msg = _msgs.get(estado_plat, _msgs["not_found"]).format(p=nombre_plat)
+    st.caption(f":material/info: {msg}")
+
+
 # ── fetch_completo: datos editables + botón de predicción ─────────────────
 if estado == "fetch_completo":
     resultado_fetch: ResultadoFetch = st.session_state["fetch_resultado"]
@@ -499,6 +516,7 @@ if estado == "fetch_completo":
     # Spotify
     _src_header("music_note", "Spotify", PALETTE["mint"],
                 _EST_ICON[resultado_fetch.estado.get("spotify", "skipped")] + " Spotify")
+    _aviso_datos_por_defecto("spotify", resultado_fetch.estado.get("spotify", "skipped"))
     _c1, _c2, _c3 = st.columns(3)
     with _c1:
         ov_sp_albums  = st.number_input("Álbumes", min_value=0,
@@ -512,43 +530,53 @@ if estado == "fetch_completo":
         ov_sp_anos    = st.number_input("Años activo", min_value=0.0,
                                         value=float(sp_data.get("sp_anos_activo", 1.0)),
                                         step=0.5, format="%.1f", key="ov_sp_anos")
+    if sp_data.get("sp_sin_tracks"):
+        st.caption(
+            ":material/info: No se encontraron canciones principales en Spotify. "
+            "Los campos de duración media, contenido explícito y colaboraciones están a 0."
+        )
 
     # Last.fm
     _src_header("radio", "Last.fm", PALETTE["pink"],
                 _EST_ICON[resultado_fetch.estado.get("lastfm", "skipped")] + " Last.fm")
+    _aviso_datos_por_defecto("lastfm", resultado_fetch.estado.get("lastfm", "skipped"))
     _c1, _c2 = st.columns(2)
     with _c1:
         ov_lfm_oyentes   = st.number_input("Oyentes únicos", min_value=0,
                                            value=int(lfm_data.get("lfm_oyentes", 0)),
                                            step=1000, key="ov_lfm_oyentes")
     with _c2:
-        ov_lfm_scrobbles = st.number_input("Scrobbles totales", min_value=0,
+        ov_lfm_scrobbles = st.number_input("Escuchas registradas en Last.fm", min_value=0,
                                            value=int(lfm_data.get("lfm_scrobbles", 0)),
                                            step=10000, key="ov_lfm_scrobbles")
 
     # YouTube
     _src_header("smart_display", "YouTube", PALETTE["coral"],
                 _EST_ICON[resultado_fetch.estado.get("youtube", "skipped")] + " YouTube")
+    _aviso_datos_por_defecto("youtube", resultado_fetch.estado.get("youtube", "skipped"))
     _c1, _c2, _c3 = st.columns(3)
     with _c1:
         ov_yt_sus    = st.number_input("Suscriptores", min_value=0,
                                        value=int(yt_data.get("yt_suscriptores", 0)),
                                        step=1000, key="ov_yt_sus")
+        if yt_data.get("yt_suscriptores_ocultos"):
+            st.caption(":material/visibility_off: Este canal oculta el recuento de suscriptores.")
     with _c2:
         ov_yt_vistas = st.number_input("Vistas totales", min_value=0,
                                        value=int(yt_data.get("yt_vistas_totales", 0)),
                                        step=10000, key="ov_yt_vistas")
     with _c3:
-        ov_yt_videos = st.number_input("Nº vídeos", min_value=0,
+        ov_yt_videos = st.number_input("Número de vídeos", min_value=0,
                                        value=int(yt_data.get("yt_num_videos", 0)),
                                        step=1, key="ov_yt_videos")
 
     # setlist.fm
     _src_header("stadium", "Conciertos (setlist.fm)", PALETTE["blue"],
                 _EST_ICON[resultado_fetch.estado.get("setlistfm", "skipped")] + " setlist.fm")
+    _aviso_datos_por_defecto("setlistfm", resultado_fetch.estado.get("setlistfm", "skipped"))
     _c1, _c2 = st.columns([1, 1])
     with _c1:
-        ov_sl_conc  = st.number_input("Nº conciertos documentados", min_value=0,
+        ov_sl_conc  = st.number_input("Conciertos registrados", min_value=0,
                                       value=int(sl_data.get("sl_num_conciertos", 0)),
                                       step=1, key="ov_sl_conc")
         ov_sl_tiene = st.checkbox("Aparece en setlist.fm",
@@ -558,7 +586,7 @@ if estado == "fetch_completo":
         ov_info_conc = st.text_area(
             "Info adicional sobre directos (opcional)",
             placeholder="Ej: Tocó en Sala Copera con ~150 personas.",
-            help="No entra en el modelo — el agente IA la usa para contextualizar.",
+            help="La IA la usará para contextualizar el análisis.",
             height=100,
             key="ov_info_conc",
         )
@@ -581,7 +609,7 @@ if estado == "fetch_completo":
     col_pred, col_nuevo = st.columns([2, 1])
     with col_pred:
         predecir_btn = st.button(
-            ":material/play_arrow: Predecir tier de sala",
+            ":material/play_arrow: Predecir el tamaño de sala que puede llenar",
             use_container_width=True,
         )
     with col_nuevo:
@@ -599,13 +627,13 @@ if estado == "fetch_completo":
             resultado_pred = predecir(**features_kwargs)
         except FileNotFoundError:
             st.error(
-                "El modelo no está disponible. Entrénalo ejecutando `python -m src.models.train`.",
+                "El análisis no está disponible. Contacta con el administrador para activarlo.",
                 icon=":material/error:",
             )
             st.stop()
         except Exception as _e:
             log(f"Error en predicción: {_e}", "ERR")
-            st.error(f"Error al calcular la predicción: `{type(_e).__name__}: {_e}`", icon=":material/error:")
+            st.error("No se pudo calcular la predicción. Por favor, revisa los datos e inténtalo de nuevo.", icon=":material/error:")
             st.stop()
         nivel = resultado_pred["nivel"]
         log(f"Predicción: {nivel.upper()}", "OK")
@@ -650,7 +678,7 @@ with st.expander(":material/tune: Introducir datos manualmente (modo avanzado)",
         with col_lfm1:
             lfm_oyentes   = st.number_input("Oyentes únicos",    min_value=0, value=0, step=100)
         with col_lfm2:
-            lfm_scrobbles = st.number_input("Scrobbles totales", min_value=0, value=0, step=1000)
+            lfm_scrobbles = st.number_input("Escuchas registradas en Last.fm", min_value=0, value=0, step=1000)
 
         _src_header("smart_display", "YouTube", PALETTE["coral"], "3 campos · YouTube", "https://www.youtube.com")
         col_yt1, col_yt2, col_yt3 = st.columns(3)
@@ -659,7 +687,7 @@ with st.expander(":material/tune: Introducir datos manualmente (modo avanzado)",
         with col_yt2:
             yt_vistas_totales = st.number_input("Vistas totales", min_value=0, value=0, step=1000)
         with col_yt3:
-            yt_num_videos     = st.number_input("Nº vídeos", min_value=0, value=0, step=1)
+            yt_num_videos     = st.number_input("Número de vídeos", min_value=0, value=0, step=1)
 
         _src_header("stadium", "Conciertos (setlist.fm)", PALETTE["blue"], "2 campos · Setlist.fm", "https://www.setlist.fm")
         col_sl1, col_sl2 = st.columns([1, 1])
@@ -671,23 +699,22 @@ with st.expander(":material/tune: Introducir datos manualmente (modo avanzado)",
             sl_actuo_sin_datos = st.checkbox(
                 "Ha actuado en directo (sin datos exactos)",
                 value=False,
-                help="Activa el flag de 'tiene historial de directos' aunque no haya datos en setlist.fm. "
-                     "Útil cuando sabes que el artista actúa en vivo pero no está documentado.",
+                help="Marca esta opción si sabes que el artista actúa en directo aunque no esté registrado en setlist.fm.",
             )
             sl_num_conciertos = st.number_input(
-                "Nº conciertos documentados",
+                "Conciertos registrados",
                 min_value=0, value=0, step=1,
             )
         with col_sl2:
             info_conciertos = st.text_area(
                 "Info adicional sobre directos (opcional)",
                 placeholder="Ej: Tocó en Sala Copera con ~150 personas. Ha actuado en festivales locales.",
-                help="No entra en el modelo — el agente IA la usa para contextualizar.",
+                help="La IA la usará para contextualizar el análisis.",
                 height=130,
             )
 
         submitted = st.form_submit_button(
-            ":material/play_arrow: Predecir tier de sala",
+            ":material/play_arrow: Predecir el tamaño de sala que puede llenar",
             use_container_width=True,
         )
 
@@ -708,16 +735,16 @@ with st.expander(":material/tune: Introducir datos manualmente (modo avanzado)",
                 "sl_num_conciertos": int(sl_num_conciertos),
                 "sl_tiene_datos":    1 if int(sl_num_conciertos) > 0 or sl_actuo_sin_datos else int(sl_tiene_datos),
             }
-            st.write("**1 · Construyendo vector de features…**")
+            st.write("**1 · Preparando los datos…**")
             features = construir_features(**inputs_raw)
-            st.write(f"  Lanzamientos/año: **{features['sp_releases_por_ano']:.1f}**")
-            st.write(f"  Fidelidad (scrobbles/oyente): **{features['lfm_scrobbles_por_oyente']:.1f}**")
+            st.write(f"  Álbumes y singles por año: **{features['sp_releases_por_ano']:.1f}**")
+            st.write(f"  Fidelidad de fans (escuchas por oyente): **{features['lfm_scrobbles_por_oyente']:.1f}**")
 
             st.write("**2 · Ejecutando la predicción…**")
             resultado = predecir(**inputs_raw)
             nivel = resultado["nivel"]
             proba = resultado["probabilidades"]
-            st.write(f"  → **Tier predicho: {nivel.upper()}**")
+            st.write(f"  → **Nivel de sala predicho: {nivel.upper()}**")
             log(f"Predicción: {nivel.upper()}", "OK")
             status.update(label=f":material/check_circle: {nivel.upper()}", state="complete")
 

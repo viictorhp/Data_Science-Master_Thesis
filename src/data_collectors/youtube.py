@@ -240,13 +240,14 @@ class YouTubeCollector:
         videos = int(stats.get("videoCount", 0)) or None
 
         return {
-            "suscriptores":      subs,
-            "vistas_totales":    vistas,
-            "num_videos":        videos,
-            "fecha_creacion":    snippet.get("publishedAt", "")[:10] or None,
-            "pais_canal":        snippet.get("country"),
-            "descripcion_canal": (snippet.get("description") or "")[:200] or None,
-            "_muy_pequeno":      self._es_muy_pequeno(subs, vistas),
+            "suscriptores":         subs,
+            "suscriptores_ocultos": bool(stats.get("hiddenSubscriberCount")),
+            "vistas_totales":       vistas,
+            "num_videos":           videos,
+            "fecha_creacion":       snippet.get("publishedAt", "")[:10] or None,
+            "pais_canal":           snippet.get("country"),
+            "descripcion_canal":    (snippet.get("description") or "")[:200] or None,
+            "_muy_pequeno":         self._es_muy_pequeno(subs, vistas),
         }
 
 

@@ -25,14 +25,14 @@ VALORES TÍPICOS POR TIER (dataset de 182 artistas):
 | Métrica              | BAJO         | MEDIO          | ALTO            |
 |----------------------|--------------|----------------|-----------------|
 | Last.fm oyentes      | 1K – 15K     | 15K – 150K     | 150K – 2M+      |
-| Last.fm scrobbles    | 10K – 200K   | 200K – 3M      | 3M – 50M+       |
-| YT suscriptores      | 500 – 15K    | 10K – 200K     | 200K – 5M+      |
-| YT vistas totales    | 50K – 500K   | 500K – 10M     | 10M – 500M+     |
+| Last.fm Escuchas     | 10K – 200K   | 200K – 3M      | 3M – 50M+       |
+| YouTube Suscriptores | 500 – 15K    | 10K – 200K     | 200K – 5M+      |
+| YouTube Vistas totales | 50K – 500K | 500K – 10M     | 10M – 500M+     |
 | Conciertos setlist.fm| 0–5 (21% tienen datos) | 5–30 (75% tienen datos) | 20–100+ (95% tienen datos) |
 | Años activo          | 1 – 4        | 3 – 7          | 5 – 12          |
 | Artistas ejemplo     | Tarchi, Gatti, Xico Palma | BEJO, Choclock, Metrika, Elio Toffana, Enry-k | Bad Gyal, Quevedo, Morad, La Zowi, Rels B, Yung Beef, SAIKO, Maka |
 
-Nota: Quevedo y Bad Gyal son outliers extremos en YouTube (10–50x la mediana de ALTO).
+Nota: Quevedo y Bad Gyal son casos excepcionales en YouTube (10–50x la media de ALTO).
 """
 
 
@@ -83,16 +83,16 @@ honestidad — forma parte del valor del análisis.
 • ALTO  : > 2.000 personas — palacios de deportes, WiZink, Movistar Arena, festivales grandes
 
 ═══ SOBRE EL MODELO ═══
-• Dataset : 182 artistas de rap/urbano español — bajo=81 · medio=62 · alto=39
-• Métricas: Accuracy CV5 = 68.2% | F1 macro = 66.6% | Baseline dummy = 39.5%
-  → El modelo supera en +27pp al clasificador trivial, pero no es infalible.
-• Features con más peso (por importancia SHAP):
+• Base de datos: 182 artistas de rap/urbano español — bajo=81 · medio=62 · alto=39
+• Resultados: Acierto = 68.2% | Fiabilidad equilibrada = 66.6% | Adivinando aleatoriamente = 39.5%
+  → El sistema supera en 27 puntos al método que siempre adivina lo mismo, pero no es infalible.
+• Datos con más influencia en las predicciones:
     1. Nº conciertos en setlist.fm   4. Suscriptores YouTube
-    2. Aparición en setlist.fm       5. Scrobbles Last.fm
+    2. Aparición en setlist.fm       5. Escuchas en Last.fm
     3. Oyentes únicos Last.fm        6. Países donde ha actuado
-• Clase más difícil: MEDIO (zona frontera entre bajo y alto)
-• Limitación conocida: los conciertos sin documentar en setlist.fm no influyen en el modelo.
-  Si un artista actúa pero no está registrado, el modelo puede subestimar su tier.
+• Nivel más difícil de predecir: MEDIO (zona de incertidumbre entre bajo y alto)
+• Limitación conocida: los conciertos sin documentar en setlist.fm no influyen en el análisis.
+  Si un artista actúa pero no está registrado, el sistema puede subestimar su nivel.
 
 {_REFERENCIA_TIERS}
 ═══ PREDICCIÓN ACTIVA: {nombre.upper()} ═══
@@ -106,8 +106,8 @@ Spotify
   • Actividad   : {f['sp_anos_activo']:.1f} años en activo · {f['sp_releases_por_ano']:.1f} lanzamientos/año
 
 Last.fm
-  • Alcance     : {f['lfm_oyentes']:,.0f} oyentes únicos · {f['lfm_scrobbles']:,.0f} scrobbles acumulados
-  • Engagement  : {scrobbles_por_oyente:.1f} scrobbles/oyente → {engagement_lfm}
+  • Alcance     : {f['lfm_oyentes']:,.0f} oyentes únicos · {f['lfm_scrobbles']:,.0f} escuchas acumuladas
+  • Fidelidad de fans: {scrobbles_por_oyente:.1f} escuchas por oyente → {engagement_lfm}
 
 YouTube
   • Tamaño      : {f['yt_suscriptores']:,.0f} suscriptores · {f['yt_vistas_totales']:,.0f} vistas totales · {f.get('yt_num_videos', 0):.0f} vídeos
@@ -117,11 +117,11 @@ YouTube
 Conciertos (setlist.fm)
   • Historial   : {f['sl_num_conciertos']:.0f} conciertos documentados · {perfil_sl}
   • Alcance     : {f.get('sl_num_paises', 0):.0f} países · {f.get('sl_pct_espana', 0):.0%} en España
-  • Calidad show: {f.get('sl_avg_canciones', 0):.1f} canciones medias/concierto
+  • Duración media del concierto: {f.get('sl_avg_canciones', 0):.1f} canciones
 
 ═══ TENDENCIAS ACTUALES ═══
   • Google Trends : {trend_gtrends:.1f} / 100 {nota_gtrends}
-  • YT reciente   : {f.get('trend_yt_vistas_recientes', 0):,.0f} vistas en últimos 5 vídeos
+  • YouTube reciente: {f.get('trend_yt_vistas_recientes', 0):,.0f} vistas en últimos 5 vídeos
                     {f.get('trend_yt_vistas_por_video_reciente', 0):,.0f} vistas/vídeo reciente
                     (comparar con {yt_vistas_por_video:,.0f} vistas/vídeo histórico para ver tendencia)
 

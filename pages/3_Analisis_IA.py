@@ -1,7 +1,7 @@
 """
 Página 3 — Análisis con IA.
 
-Misma lógica original (agentes LangChain + Groq) con el sistema de diseño Studio.
+Agentes LangChain + Groq con el sistema de diseño Studio.
 """
 
 import sys
@@ -32,7 +32,7 @@ if "prediccion" not in st.session_state:
         page_header(
             crumb="Inicio · <b style='color:#B6ADCB;'>Análisis IA</b>",
             title_html="Análisis con <em>IA</em>",
-            sub="El agente LangChain + Groq explica la predicción en lenguaje natural.",
+            sub="Un asistente inteligente explicará la predicción en lenguaje natural.",
             pill_text="Esperando predicción",
             pill_color="amber",
         ),
@@ -65,10 +65,9 @@ seg_color = TIER_COLOR[segundo[0]]
 st.markdown(
     page_header(
         crumb="Inicio · <b style='color:#B6ADCB;'>Análisis IA</b>",
-        title_html="Conversa con el <em>agente</em>",
-        sub=("LangChain + Groq · Llama 3.3 70B · contexto del modelo y la predicción "
-             "inyectado en el system prompt."),
-        pill_text="Groq online",
+        title_html="Conversa con la <em>IA</em>",
+        sub="Un asistente inteligente explica la predicción y responde tus preguntas sobre el artista.",
+        pill_text="IA lista",
         pill_color="mint",
     ),
     unsafe_allow_html=True,
@@ -98,7 +97,7 @@ st.markdown(
       </div>
       <div>
         <div style="font-family:'JetBrains Mono';font-size:10.5px;color:#7A7290;
-                    text-transform:uppercase;letter-spacing:0.1em;">Tier predicho</div>
+                    text-transform:uppercase;letter-spacing:0.1em;">Nivel predicho</div>
         <div style="display:flex;align-items:center;gap:8px;margin-top:2px;">
           <span style="width:8px;height:8px;border-radius:50%;background:{color};box-shadow:0 0 8px {color};"></span>
           <b style="font-family:'Space Grotesk';font-size:18px;color:{color};">{nivel.upper()}</b>
@@ -111,7 +110,7 @@ st.markdown(
       </div>
       <div>
         <div style="font-family:'JetBrains Mono';font-size:10.5px;color:#7A7290;
-                    text-transform:uppercase;letter-spacing:0.1em;">2º más probable</div>
+                    text-transform:uppercase;letter-spacing:0.1em;">2ª opción</div>
         <div style="font-family:'Space Grotesk';font-size:14px;">
           <span style="color:{seg_color};">{segundo[0]}</span>
           <span style="color:#7A7290;font-family:'JetBrains Mono';font-size:13px;">· {segundo[1]:.1%}</span>
@@ -133,37 +132,34 @@ if "explicacion_inicial" not in st.session_state or \
 
     st.session_state["prediccion_id"] = pred_id
 
-    with st.status(":material/bolt: Consultando agente IA…", expanded=True) as status:
-        st.write("**1 · Construcción del contexto del sistema**")
+    with st.status(":material/bolt: Preparando el análisis con IA…", expanded=True) as status:
+        st.write("**1 · Preparando los datos del artista**")
         system_prompt = _system_prompt(resultado, nombre, info)
-        st.write(f"  Modelo LLM   : `llama-3.3-70b-versatile` (Groq)")
-        st.write(f"  Temperatura  : `0.3`")
         st.write(f"  Artista      : {nombre}")
-        st.write(f"  Tier predicho: {nivel.upper()} ({proba[nivel]:.1%})")
-        st.write(f"  Métricas incluidas en el prompt:")
+        st.write(f"  Nivel de sala: {nivel.upper()} ({proba[nivel]:.1%})")
+        st.write(f"  Datos incluidos en el análisis:")
         tiene_sl = int(features.get("sl_tiene_datos", 0))
         st.write(f"    • Spotify  : {features['sp_num_albums']:.0f} álbumes · {features['sp_num_singles']:.0f} singles · {features['sp_anos_activo']:.1f} años")
-        st.write(f"    • Last.fm  : {features['lfm_oyentes']:,.0f} oyentes · {features['lfm_scrobbles']:,.0f} scrobbles")
-        st.write(f"    • YouTube  : {features['yt_suscriptores']:,.0f} subs · {features['yt_vistas_totales']:,.0f} vistas")
-        st.write(f"    • Directo  : {features['sl_num_conciertos']:.0f} conciertos · setlist.fm: {'sí' if tiene_sl else 'no aparece'}")
-        st.write(f"    • Tendencias: Google {features.get('trend_gtrends_interes_medio', 0):.1f}/100 · YT rec. {features.get('trend_yt_vistas_recientes', 0):,.0f} vistas")
+        st.write(f"    • Last.fm  : {features['lfm_oyentes']:,.0f} oyentes · {features['lfm_scrobbles']:,.0f} escuchas registradas")
+        st.write(f"    • YouTube  : {features['yt_suscriptores']:,.0f} suscriptores · {features['yt_vistas_totales']:,.0f} vistas")
+        st.write(f"    • Conciertos: {features['sl_num_conciertos']:.0f} registrados · Aparece en setlist.fm: {'Sí' if tiene_sl else 'No'}")
+        st.write(f"    • Tendencias: Google Trends {features.get('trend_gtrends_interes_medio', 0):.1f}/100 · YouTube reciente {features.get('trend_yt_vistas_recientes', 0):,.0f} vistas")
         st.write(f"  Info adicional: {'Sí' if info else 'No'}")
-        st.write(f"  Longitud del system prompt: {len(system_prompt)} caracteres")
         log(f"System prompt construido para {nombre}: {len(system_prompt)} chars", "API")
 
-        with st.expander(":material/terminal:  Ver system prompt completo enviado a la IA"):
+        with st.expander(":material/terminal:  Ver datos enviados a la IA (avanzado)"):
             st.code(system_prompt, language=None)
 
-        st.write("**2 · Enviando petición a Groq**")
+        st.write("**2 · Consultando a la IA**")
         log("Llamando a Groq API — generar_explicacion()", "API")
         try:
             explicacion = generar_explicacion(resultado, nombre, info)
         except Exception as e:
             log(f"Error Groq generar_explicacion: {e}", "ERR")
-            status.update(label=":material/error: Error al contactar con Groq", state="error")
-            st.error(f"No se pudo conectar con el agente IA (Groq). Comprueba tu GROQ_API_KEY y la conexión a Internet.\n\n`{e}`")
+            status.update(label=":material/error: Error al generar el análisis", state="error")
+            st.error(f"No se pudo conectar con la IA. Comprueba tu conexión a Internet.")
             st.stop()
-        st.write(f"  Respuesta recibida: {len(explicacion)} caracteres")
+        st.write(f"  Análisis recibido ✓")
         log(f"Respuesta recibida: {len(explicacion)} caracteres", "OK")
 
         status.update(label=":material/check_circle: Análisis generado correctamente", state="complete")
@@ -191,16 +187,14 @@ with col_chat:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    if pregunta := st.chat_input("Escribe tu pregunta…  p. ej. ¿qué le falta para tier máximo?"):
+    if pregunta := st.chat_input("Escribe tu pregunta…  p. ej. ¿qué le falta para llenar salas más grandes?"):
         log(f"Usuario pregunta: {pregunta[:80]}{'…' if len(pregunta) > 80 else ''}", "STEP")
         st.session_state["historial_chat"].append({"role": "user", "content": pregunta})
         with st.chat_message("user"):
             st.markdown(pregunta)
 
         with st.chat_message("assistant"):
-            with st.status(":material/bolt: Consultando Groq…", expanded=False) as s:
-                st.write(f"  Turno nº {len(st.session_state['historial_chat'])}")
-                st.write(f"  Pregunta: *{pregunta[:120]}*")
+            with st.status(":material/bolt: Consultando a la IA…", expanded=False) as s:
                 log(f"Llamando a Groq API — chat() turno {len(st.session_state['historial_chat'])}", "API")
                 try:
                     respuesta = chat(
@@ -212,11 +206,10 @@ with col_chat:
                     )
                 except Exception as e:
                     log(f"Error Groq chat: {e}", "ERR")
-                    s.update(label=":material/error: Error al contactar con Groq", state="error")
-                    st.error(f"No se pudo obtener respuesta del agente IA.\n\n`{e}`")
+                    s.update(label=":material/error: Error al contactar con la IA", state="error")
+                    st.error("No se pudo obtener respuesta. Inténtalo de nuevo.")
                     st.session_state["historial_chat"].pop()
                     st.stop()
-                st.write(f"  Respuesta recibida: {len(respuesta)} caracteres")
                 log(f"Respuesta chat recibida: {len(respuesta)} chars", "OK")
                 s.update(label=":material/check_circle: Respuesta generada", state="complete")
 
@@ -225,26 +218,26 @@ with col_chat:
         st.session_state["historial_chat"].append({"role": "assistant", "content": respuesta})
 
 with col_side:
-    section_label("PREGUNTA ALGO", icon="lightbulb")
+    section_label("PREGUNTAS SUGERIDAS", icon="lightbulb")
 
     # Sugerencias adaptadas al contexto de la predicción
-    _siguiente_tier = {"bajo": "MEDIO", "medio": "ALTO", "alto": "el tier máximo ya"}
-    _tier_ref = {"bajo": "underground del dataset", "medio": "de tier BAJO para comparar", "alto": "de tier MEDIO para comparar"}
+    _siguiente_tier = {"bajo": "MEDIO", "medio": "ALTO", "alto": "el nivel máximo ya"}
+    _tier_ref = {"bajo": "de nivel BAJO", "medio": "de nivel BAJO para comparar", "alto": "de nivel MEDIO para comparar"}
     _confianza_baja = proba[nivel] < 0.55
 
     sugerencias = [
-        f"¿Qué métricas concretas le faltan a {nombre} para llegar a {_siguiente_tier[nivel]}?",
-        ("¿Por qué el modelo tiene tan poca confianza en esta predicción?"
+        f"¿Qué le falta a {nombre} para poder llenar salas de nivel {_siguiente_tier[nivel]}?",
+        ("¿Por qué hay tanta incertidumbre en esta predicción?"
          if _confianza_baja else
-         f"¿Qué métrica es la más determinante para que {nombre} esté en {nivel.upper()}?"),
+         f"¿Cuál es el dato más importante para que {nombre} esté en este nivel?"),
         f"¿Cómo se compara {nombre} con un artista {_tier_ref[nivel]}?",
-        "¿Cómo se entrenó el modelo y qué significa la confianza?",
+        "¿Cómo funciona este análisis y qué significa la confianza?",
     ]
 
     for i, sug in enumerate(sugerencias):
         if st.button(sug, key=f"sug_{i}", use_container_width=True, type="secondary"):
             st.session_state["historial_chat"].append({"role": "user", "content": sug})
-            with st.spinner(":material/bolt: Consultando Groq…"):
+            with st.spinner(":material/bolt: Consultando a la IA…"):
                 try:
                     respuesta = chat(
                         historial=st.session_state["historial_chat"][:-1],
@@ -256,7 +249,7 @@ with col_side:
                 except Exception as e:
                     log(f"Error Groq sugerencia: {e}", "ERR")
                     st.session_state["historial_chat"].pop()
-                    st.error(f"No se pudo obtener respuesta del agente IA.\n\n`{e}`")
+                    st.error("No se pudo obtener respuesta. Inténtalo de nuevo.")
                     st.stop()
             st.session_state["historial_chat"].append({"role": "assistant", "content": respuesta})
             st.rerun()

@@ -182,27 +182,29 @@ def _fetch_spotify(sp_client, spotify_id: str, nombre_spotify: str) -> dict:
     disc = get_discografia(sp_client, spotify_id, nombre_spotify)
     tracks = get_spotify_tracks(sp_client, spotify_id, nombre_spotify)
 
-    avg_duration = 210_000.0
-    pct_explicit = 0.6
-    pct_colabs = 0.3
+    avg_duration = 0.0
+    pct_explicit = 0.0
+    pct_colabs   = 0.0
+    sin_tracks   = True
 
     if tracks:
+        sin_tracks = False
         durations = [t["duration_ms"] for t in tracks if t.get("duration_ms")]
         if durations:
             avg_duration = sum(durations) / len(durations)
         explicits = [t["explicit"] for t in tracks if t.get("explicit") is not None]
         if explicits:
             pct_explicit = sum(1 for e in explicits if e) / len(explicits)
-        if tracks:
-            pct_colabs = sum(1 for t in tracks if t.get("num_artistas", 1) > 1) / len(tracks)
+        pct_colabs = sum(1 for t in tracks if t.get("num_artistas", 1) > 1) / len(tracks)
 
     return {
-        "sp_num_albums":     disc.get("num_albums", 0),
-        "sp_num_singles":    disc.get("num_singles", 0),
-        "sp_anos_activo":    disc.get("anos_activo") or 1.0,
+        "sp_num_albums":      disc.get("num_albums", 0),
+        "sp_num_singles":     disc.get("num_singles", 0),
+        "sp_anos_activo":     disc.get("anos_activo") or 1.0,
         "sp_avg_duration_ms": avg_duration,
-        "sp_pct_explicit":   pct_explicit,
-        "sp_pct_colabs":     pct_colabs,
+        "sp_pct_explicit":    pct_explicit,
+        "sp_pct_colabs":      pct_colabs,
+        "sp_sin_tracks":      sin_tracks,  # metadata para la UI; no entra al modelo
     }
 
 
@@ -249,10 +251,11 @@ def _fetch_youtube(nombre: str, api_key: str) -> dict:
 
     stats.pop("_muy_pequeno", None)
     return {
-        "channel_id":       channel_id,
-        "yt_suscriptores":  stats.get("suscriptores") or 0,
-        "yt_vistas_totales": stats.get("vistas_totales") or 0,
-        "yt_num_videos":    stats.get("num_videos") or 0,
+        "channel_id":              channel_id,
+        "yt_suscriptores":         int(stats.get("suscriptores") or 0),
+        "yt_suscriptores_ocultos": bool(stats.get("suscriptores_ocultos", False)),
+        "yt_vistas_totales":       int(stats.get("vistas_totales") or 0),
+        "yt_num_videos":           int(stats.get("num_videos") or 0),
     }
 
 
@@ -273,6 +276,9 @@ def _fetch_setlistfm(nombre: str, api_key: str) -> dict:
     mbid, _ = resultado_busqueda
     setlists = obtener_setlists(str(mbid), max_paginas=3)
 
+    # sl_tiene_datos=1 aquí significa "MBID encontrado en setlist.fm".
+    # construir_features() lo sobreescribe a 1 solo si sl_num_conciertos > 0,
+    # por lo que el valor efectivo para el modelo es "tiene conciertos documentados".
     base = {"sl_tiene_datos": 1, "sl_num_conciertos": 0,
             "sl_avg_canciones": 0.0, "sl_pct_encore": 0.0,
             "sl_num_paises": 0, "sl_pct_espana": 0.0}
@@ -314,6 +320,8 @@ def _fetch_gtrends(nombre: str, timeout: float = 15.0) -> dict:
             result["trend_gtrends_interes_medio"] = round(float(df[nombre].mean()), 2)
     except Exception:
         pass
+    if result["trend_gtrends_interes_medio"] == 0.0:
+        result["_gtrends_sin_datos"] = True
     return result
 
 
@@ -388,6 +396,11 @@ def fetch_features_por_nombre(
                     if datos:
                         resultado.estado[plataforma] = "ok"
                         if plataforma == "gtrends":
+                            if datos.pop("_gtrends_sin_datos", False):
+                                resultado.advertencias.append(
+                                    "Google Trends: no hay datos de búsqueda para este artista en España. "
+                                    "El interés de búsqueda se usará como 0."
+                                )
                             resultado.trend.update(datos)
                         else:
                             setattr(resultado, _plataforma_attr(plataforma), datos)
@@ -463,9 +476,9 @@ def resultado_a_features(resultado: ResultadoFetch) -> dict:
         "sp_num_albums":      int(sp.get("sp_num_albums", 0)),
         "sp_num_singles":     int(sp.get("sp_num_singles", 0)),
         "sp_anos_activo":     float(sp.get("sp_anos_activo", 1.0)),
-        "sp_avg_duration_ms": float(sp.get("sp_avg_duration_ms", 210_000)),
-        "sp_pct_explicit":    float(sp.get("sp_pct_explicit", 0.6)),
-        "sp_pct_colabs":      float(sp.get("sp_pct_colabs", 0.3)),
+        "sp_avg_duration_ms": float(sp.get("sp_avg_duration_ms", 0.0)),
+        "sp_pct_explicit":    float(sp.get("sp_pct_explicit", 0.0)),
+        "sp_pct_colabs":      float(sp.get("sp_pct_colabs", 0.0)),
         # Last.fm
         "lfm_oyentes":     int(lfm.get("lfm_oyentes", 0)),
         "lfm_scrobbles":   int(lfm.get("lfm_scrobbles", 0)),
