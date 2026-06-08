@@ -78,17 +78,17 @@ st.markdown("##### Fiabilidad con 5 pruebas independientes · la banda muestra l
 _img("comparativa_modelos.png")
 
 st.markdown("""
-| Método | Indicadores | Acierto | Fiabilidad | Estabilidad |
-|--------|-------------|---------|------------|-------------|
+| Método | Señales | Acierto | Fiabilidad | Estabilidad |
+|--------|---------|---------|------------|-------------|
 | Referencia: siempre predice "Bajo" | —  | 39.5 % ± 0.9 % | 18.9 % ± 0.3 %  | —  |
 | Referencia: predicción aleatoria   | —  | 37.0 % ± 6.9 % | 33.6 % ± 7.2 %  | —  |
-| Regresión Logística       | 23 | 55.4 % ± 3.3 % | 55.4 % ± 4.8 %  | ✅ |
-| Regresión Ordinal         | 23 | 60.5 % ± 3.9 % | 57.8 % ± 7.5 %  | ✅ |
-| SVM                       | 23 | 59.3 % ± 6.2 % | 57.4 % ± 8.1 %  | ⚠️ |
-| LightGBM                  | 31 | 60.5 % ± 8.9 % | 58.8 % ± 9.8 %  | ❌ |
-| Random Forest             | 31 | 62.4 % ± 2.9 % | 61.0 % ± 3.8 %  | ✅ |
-| **XGBoost (versión básica)**   | **31** | **63.0 % ± 8.3 %** | **61.6 % ± 9.4 %** | ❌ |
-| **XGBoost (versión optimizada)** 🏆 | **31** | **68.2 % ± 6.7 %** | **66.6 % ± 6.3 %** | ✅ |
+| Método lineal básico              | 23 | 55.4 % ± 3.3 % | 55.4 % ± 4.8 %  | ✅ |
+| Método lineal ordenado            | 23 | 60.5 % ± 3.9 % | 57.8 % ± 7.5 %  | ✅ |
+| Método por separación de márgenes | 23 | 59.3 % ± 6.2 % | 57.4 % ± 8.1 %  | ⚠️ |
+| Motor de árboles (LightGBM)       | 31 | 60.5 % ± 8.9 % | 58.8 % ± 9.8 %  | ❌ |
+| Motor de árboles (Random Forest)  | 31 | 62.4 % ± 2.9 % | 61.0 % ± 3.8 %  | ✅ |
+| **Motor seleccionado (versión básica)** | **31** | **63.0 % ± 8.3 %** | **61.6 % ± 9.4 %** | ❌ |
+| **Motor seleccionado (versión optimizada)** 🏆 | **31** | **68.2 % ± 6.7 %** | **66.6 % ± 6.3 %** | ✅ |
 """)
 
 divider()
@@ -96,7 +96,7 @@ divider()
 # ---------------------------------------------------------------------------
 # 2. Base vs tuned
 # ---------------------------------------------------------------------------
-section_label("02 · XGBOOST — VERSIÓN BÁSICA vs VERSIÓN OPTIMIZADA", icon="tune")
+section_label("02 · MOTOR DE PREDICCIÓN — VERSIÓN BÁSICA vs VERSIÓN OPTIMIZADA", icon="tune")
 st.markdown("##### Se probaron 100 configuraciones distintas, cada una validada 5 veces — optimizado para máxima fiabilidad")
 
 _img("xgb_base_vs_tuned.png")
@@ -169,7 +169,7 @@ divider()
 section_label("04 · ¿QUÉ DATOS IMPORTAN MÁS?", icon="bar_chart")
 
 tab_top10, tab_rf, tab_xgb, tab_shap = st.tabs([
-    "Top 10 · Resumen", "Random Forest", "XGBoost", "Desglose detallado",
+    "Top 10 · Resumen", "Análisis A", "Análisis B", "Impacto por dato",
 ])
 
 with tab_top10:
@@ -189,7 +189,7 @@ with tab_rf:
     _img("feature_importance_rf.png")
 
 with tab_xgb:
-    st.image(str(FIGURES / "feature_importance_xgb.png"), use_container_width=True)
+    _img("feature_importance_xgb.png")
 
 with tab_shap:
     SHAP_BAR = FIGURES / "shap_summary_bar.png"

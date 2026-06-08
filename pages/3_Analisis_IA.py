@@ -147,10 +147,7 @@ if "explicacion_inicial" not in st.session_state or \
         st.write(f"  Info adicional: {'Sí' if info else 'No'}")
         log(f"System prompt construido para {nombre}: {len(system_prompt)} chars", "API")
 
-        with st.expander(":material/terminal:  Ver datos enviados a la IA (avanzado)"):
-            st.code(system_prompt, language=None)
-
-        st.write("**2 · Consultando a la IA**")
+        st.write("**2 · Consultando al asistente de IA**")
         log("Llamando a Groq API — generar_explicacion()", "API")
         try:
             explicacion = generar_explicacion(resultado, nombre, info)
@@ -182,7 +179,7 @@ divider()
 col_chat, col_side = st.columns([1.8, 1])
 
 with col_chat:
-    section_label("CONVERSA CON EL AGENTE", icon="forum")
+    section_label("HAZ TUS PREGUNTAS AL ASISTENTE", icon="forum")
     for msg in st.session_state["historial_chat"][1:]:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])

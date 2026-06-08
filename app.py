@@ -62,15 +62,15 @@ with st.sidebar:
         'background:rgba(0,224,164,0.08);border:1px solid rgba(0,224,164,0.25);'
         'border-radius:10px;padding:8px 12px;margin-bottom:8px;font-family:\'JetBrains Mono\';">'
         '<span style="width:8px;height:8px;border-radius:50%;background:#00E0A4;box-shadow:0 0 8px #00E0A4;"></span>'
-        'modelo online · XGBoost tuned</div>',
+        'sistema activo · motor de predicción</div>',
         unsafe_allow_html=True,
     )
     st.markdown(
         f'<div style="font-family:\'JetBrains Mono\';font-size:11px;color:#7A7290;line-height:1.7;'
         f'padding:8px 4px;">'
-        f'<b style="color:#B6ADCB;">{_N}</b> artistas · <b style="color:#B6ADCB;">{_NFEAT}</b> features<br>'
-        f'<b style="color:#B6ADCB;">Acc {_ACC}</b> · <b style="color:#B6ADCB;">F1 {_F1}</b><br>'
-        f'CV5 estratificado · k=5'
+        f'<b style="color:#B6ADCB;">{_N}</b> artistas · <b style="color:#B6ADCB;">{_NFEAT}</b> señales<br>'
+        f'<b style="color:#B6ADCB;">Acierto {_ACC}</b> · <b style="color:#B6ADCB;">Fiabilidad {_F1}</b><br>'
+        f'Validado en 5 rondas independientes'
         f'</div>',
         unsafe_allow_html=True,
     )
@@ -82,8 +82,8 @@ st.markdown(
     page_header(
         crumb="Inicio",
         title_html="Predice qué <em>sala llena</em><br>un artista de rap español",
-        sub=("Modelo de Machine Learning entrenado sobre 182 artistas del panorama urbano nacional. "
-             "Estima el tier de sala a partir de su huella digital y actividad en directo."),
+        sub=("Sistema de análisis entrenado sobre 182 artistas del panorama urbano nacional. "
+             "Estima qué tamaño de sala puede llenar un artista a partir de su presencia digital y actividad en directo."),
         pill_text="Modelo online",
         pill_color="mint",
     ),
@@ -97,9 +97,9 @@ st.markdown(
     hero(
         eyebrow="TFM · Data Science · 2026",
         title_html="De métricas a <em style=\"color:#C6F432;font-style:normal;\">aforos</em>.<br>En un solo click.",
-        lead=("Introduce Spotify, Last.fm, YouTube y setlist.fm. Recibe un tier "
-              "(bajo · medio · alto) con probabilidades, alertas e interpretación SHAP. "
-              "Después, pregunta al agente LangChain."),
+        lead=("Introduce el nombre de un artista. El sistema recoge automáticamente su presencia digital "
+              "y devuelve el nivel de sala estimado, el grado de confianza de la predicción y una explicación detallada. "
+              "Después, pregunta a nuestro asistente de IA."),
     ),
     unsafe_allow_html=True,
 )
@@ -117,10 +117,10 @@ with c_b:
 # ---------------------------------------------------------------------------
 section_label("Resumen del modelo", icon="dashboard")
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("Artistas dataset", _N, f"Bajo {_DIST['bajo']} · Med {_DIST['medio']} · Alto {_DIST['alto']}")
-m2.metric("Accuracy CV5", _ACC, _ACC_D)
-m3.metric("F1 macro", _F1, _F1_D)
-m4.metric("Features", _NFEAT, "4 fuentes · 8 ratios")
+m1.metric("Artistas analizados", _N, f"Bajo {_DIST['bajo']} · Med {_DIST['medio']} · Alto {_DIST['alto']}")
+m2.metric("Precisión", _ACC, _ACC_D)
+m3.metric("Fiabilidad equilibrada", _F1, _F1_D)
+m4.metric("Señales analizadas", _NFEAT, "4 fuentes de datos · 8 métricas derivadas")
 
 # ---------------------------------------------------------------------------
 # Tarjetas de navegación
@@ -130,7 +130,7 @@ n1, n2, n3 = st.columns(3)
 with n1:
     st.markdown(nav_card(
         "01", "insights", "Resultados del proyecto",
-        "Benchmark de 8 modelos, comparativa base vs tuned, feature importance + SHAP global y matriz de confusión OOF.",
+        "Comparativa de 8 métodos de análisis, evolución del sistema y desglose de qué datos tienen más peso en las predicciones.",
         accent="violet",
     ), unsafe_allow_html=True)
     if st.button("Explorar resultados", key="nav_res", use_container_width=True, type="secondary"):
@@ -139,8 +139,8 @@ with n1:
 with n2:
     st.markdown(nav_card(
         "02", "mic_external_on", "Predice un artista",
-        "Introduce métricas básicas de Spotify, Last.fm, YouTube y setlist.fm. "
-        "Devuelve tier, probabilidades, alertas e interpretación.",
+        "Introduce el nombre de un artista y el sistema recoge sus datos automáticamente. "
+        "Devuelve el nivel de sala estimado, el grado de confianza, avisos y una explicación detallada.",
         accent="lime",
     ), unsafe_allow_html=True)
     if st.button("Lanzar predicción", key="nav_pred", use_container_width=True):
@@ -149,8 +149,8 @@ with n2:
 with n3:
     st.markdown(nav_card(
         "03", "auto_awesome", "Análisis con IA",
-        "El agente LangChain + Groq (Llama 3.3 70B) explica la predicción en lenguaje natural "
-        "y responde a tus preguntas.",
+        "Nuestro asistente de inteligencia artificial explica la predicción en lenguaje natural "
+        "y responde a tus preguntas sobre el artista.",
         accent="pink",
     ), unsafe_allow_html=True)
     if st.button("Conversar con el agente", key="nav_ai", use_container_width=True, type="secondary"):
@@ -190,6 +190,6 @@ for nivel, num, aforo, ejemplos, n in TIERS_INFO:
 
 st.markdown(
     f'<p style="font-family:\'JetBrains Mono\';font-size:11px;color:#7A7290;margin-top:6px;">'
-    f'{_N} artistas · clase mayoritaria {int(_DIST["bajo"]) / int(_N) * 100:.1f} % (referencia para baseline).</p>',
+    f'{_N} artistas · el grupo más representado es BAJO, con un {int(_DIST["bajo"]) / int(_N) * 100:.1f} % de los casos.</p>',
     unsafe_allow_html=True,
 )

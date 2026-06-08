@@ -160,7 +160,7 @@ def _render_resultado(nombre_clean: str, resultado: dict, info_conciertos: str =
                 st.info(alerta["msg"], icon=":material/info:")
 
     divider()
-    with st.expander(":material/database:  Ver todos los datos recopilados (32 valores)"):
+    with st.expander(":material/database:  Ver todos los datos utilizados en el análisis"):
         st.caption(
             "Cada sección muestra los datos de una fuente. "
             "Los marcados como *(calculado)* se obtienen combinando otros datos."
@@ -737,7 +737,7 @@ with st.expander(":material/tune: Introducir datos manualmente (modo avanzado)",
             }
             st.write("**1 · Preparando los datos…**")
             features = construir_features(**inputs_raw)
-            st.write(f"  Álbumes y singles por año: **{features['sp_releases_por_ano']:.1f}**")
+            st.write(f"  Lanzamientos por año: **{features['sp_releases_por_ano']:.1f}**")
             st.write(f"  Fidelidad de fans (escuchas por oyente): **{features['lfm_scrobbles_por_oyente']:.1f}**")
 
             st.write("**2 · Ejecutando la predicción…**")
