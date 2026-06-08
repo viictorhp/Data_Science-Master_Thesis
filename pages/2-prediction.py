@@ -185,7 +185,7 @@ def _render_resultado(nombre_clean: str, resultado: dict, info_conciertos: str =
     section_label("¿POR QUÉ ESTA PREDICCIÓN?", icon="find_in_page")
     st.caption(
         "Cada barra muestra cuánto influye ese dato en el resultado final. "
-        "Verde = sube el resultado · Rosa = lo baja."
+        "Rojo = sube el resultado · Azul = baja el resultado."
     )
     try:
         with st.spinner("Analizando la predicción…"):

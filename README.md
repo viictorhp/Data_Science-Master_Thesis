@@ -14,14 +14,14 @@ El foco está en artistas **poco conocidos o emergentes**, lo que implica datos 
 
 ```
 app.py               # Página de inicio del dashboard (Landing)
-styles.py            # Sistema de diseño compartido (CSS, paleta, componentes HTML)
+artistas.txt         # Lista de nombres de artistas (input para el resolver)
 pages/
+  styles.py          # Sistema de diseño compartido (CSS, paleta, componentes HTML)
   1_Resultados.py    # Benchmark de modelos, confusión, feature importance y SHAP global
   2_Prediccion.py    # Formulario de predicción con traza detallada y waterfall SHAP
   3_Analisis_IA.py   # Chat con agente LangChain + Groq
 src/
   data_collectors/   # Clientes de API para ingesta de datos raw
-    spotify.py           # Búsqueda de artistas en Spotify (usado solo por el resolver)
     spotify_features.py  # Discografía y top tracks usando IDs del registry
     lastfmapi.py         # Oyentes, scrobbles y géneros; fuzzy search con difflib (umbral 0.70)
     youtube.py           # Estadísticas de canal; fuzzy search con difflib (umbral 0.55)
@@ -62,9 +62,9 @@ tests/               # Suite de tests — 114 tests, 114 passed
   test_predict.py    # Tests de construir_features() y predecir()
   test_shap_explainer.py   # Tests de shap_waterfall_fig() y constantes
 pytest.ini           # Configuración de pytest
-models/              # Artefactos entrenados (en git)
-  xgb_tuned.joblib   # Modelo XGBoost serializado con joblib
-  metadata.json      # Features, parámetros, métricas CV y timestamp del entrenamiento
+models/
+  xgb_tuned.joblib   # Modelo XGBoost serializado con joblib (gitignored)
+  metadata.json      # Features, parámetros, métricas CV y timestamp del entrenamiento (en git)
 reports/
   figures/           # PNGs de notebooks + plots SHAP (shap_summary_bar, shap_beeswarm_alto)
 data/
@@ -652,6 +652,7 @@ pytest tests/ -v       # con detalle por test
 | `test_predict.py` | 33 | `construir_features()`: los 32 campos, cálculos matemáticos, robustez ante ceros/negativos/valores extremos. `predecir()`: estructura del output, probabilidades suman 1.0, nivel = argmax |
 | `test_preprocess.py` | 20 | `_imputar()`: estrategias por grupo (NaN→0 en conteos, mediana en ratios, mediana-por-nivel en YouTube/gtrends). `cargar_datos()`: features excluidas por modo, escalado lineal, sin NaN tras imputación |
 | `test_shap_explainer.py` | 7 | Constantes `LABEL_MAP`, `shap_waterfall_fig()`: tipo de retorno `(Figure, str)`, clase válida, clase = argmax de probabilidades |
+| `test_registry.py` | — | Carga y guardado del registry: integridad de columnas, `manual_override`, sin pérdida de entradas |
 
 ### Fixtures (`tests/conftest.py`)
 

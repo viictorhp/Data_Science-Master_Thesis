@@ -225,8 +225,6 @@ def _features_setlistfm(df: pd.DataFrame) -> pd.DataFrame:
 def build_artist_features() -> pd.DataFrame:
     """Carga todas las fuentes y devuelve la matriz de features con el target."""
     labels_path = CONFIG / "artistas_labels.csv"
-    if not labels_path.exists():
-        labels_path = RAW / "artistas_labels.csv"
     labels = pd.read_csv(labels_path)[["nombre_buscado", "tier_sala"]]
     n_before = len(labels)
     labels = labels.dropna(subset=["tier_sala"])
