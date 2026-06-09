@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 
 import streamlit as st
-from pages.styles import (
+from styles import (
     inject_styles, page_header, hero, nav_card,
     brand_block, section_label, divider, tier_chip,
 )
