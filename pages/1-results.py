@@ -64,7 +64,7 @@ st.markdown(
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("Acierto", "68.2 %", "+5 puntos vs versión básica")
 m2.metric("Fiabilidad", "66.6 %", "+6 puntos vs versión básica")
-m3.metric("Estabilidad", "±6.3 %", "−2.6 pts (más estable)", delta_color="inverse")
+m3.metric("Estabilidad", "±6.3 %", "−2.6 pts (más inestable)", delta_color="inverse")
 m4.metric("Pruebas realizadas", "500", "100 configuraciones × 5 rondas")
 
 divider()
@@ -87,8 +87,8 @@ st.markdown("""
 | Método por separación de márgenes | 23 | 59.3 % ± 6.2 % | 57.4 % ± 8.1 %  | ⚠️ |
 | Motor de árboles (LightGBM)       | 31 | 60.5 % ± 8.9 % | 58.8 % ± 9.8 %  | ❌ |
 | Motor de árboles (Random Forest)  | 31 | 62.4 % ± 2.9 % | 61.0 % ± 3.8 %  | ✅ |
-| **Motor seleccionado (versión básica)** | **31** | **63.0 % ± 8.3 %** | **61.6 % ± 9.4 %** | ❌ |
-| **Motor seleccionado (versión optimizada)** 🏆 | **31** | **68.2 % ± 6.7 %** | **66.6 % ± 6.3 %** | ✅ |
+| **Motor seleccionado (XGBoost básico)** | **31** | **63.0 % ± 8.3 %** | **61.6 % ± 9.4 %** | ❌ |
+| **Motor seleccionado (XGBoost optimizado)** 🏆 | **31** | **68.2 % ± 6.7 %** | **66.6 % ± 6.3 %** | ✅ |
 """)
 
 divider()

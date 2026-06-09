@@ -1,7 +1,7 @@
 {
   "trained_at": "2026-05-18T18:09:53.744470",
   "n_samples": 182,
-  "n_features": 32,
+  "n_features": 27,
   "features": [
     "sp_num_albums",
     "sp_num_singles",

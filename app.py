@@ -1,14 +1,3 @@
-"""
-Home — Predictor de Tier de Sala (TFM 2026).
-
-Rediseño visual con identidad propia ("Studio"):
-  · Fondo nocturno violeta + acentos magenta + lima eléctrica
-  · Fuentes: Space Grotesk (titulares) + Inter + JetBrains Mono
-  · Iconos modernos (Material Symbols) en lugar de emojis genéricos
-
-La lógica de modelo es la misma del proyecto original — sólo cambia la UI.
-"""
-
 import json
 from pathlib import Path
 
