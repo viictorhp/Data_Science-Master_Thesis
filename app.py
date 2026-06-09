@@ -35,7 +35,7 @@ _F1    = f"{_META.get('cv5_metrics', {}).get('f1_mean',  0.666) * 100:.1f} %"
 _ACC_D = f"+{(_META.get('cv5_metrics', {}).get('acc_mean', 0.682) - 0.395) * 100:.1f} pts vs base"
 _F1_D  = f"+{(_META.get('cv5_metrics', {}).get('f1_mean',  0.666) - 0.189) * 100:.1f} pts vs base"
 _N     = str(_META.get("n_samples", 182))
-_NFEAT = str(_META.get("n_features", 32))
+_NFEAT = str(_META.get("n_features", 27))
 _DIST  = _META.get("class_distribution", {"bajo": 81, "medio": 62, "alto": 39})
 
 st.set_page_config(
@@ -120,7 +120,7 @@ m1, m2, m3, m4 = st.columns(4)
 m1.metric("Artistas analizados", _N, f"Bajo {_DIST['bajo']} · Med {_DIST['medio']} · Alto {_DIST['alto']}")
 m2.metric("Precisión", _ACC, _ACC_D)
 m3.metric("Fiabilidad equilibrada", _F1, _F1_D)
-m4.metric("Señales analizadas", _NFEAT, "4 fuentes de datos · 8 métricas derivadas")
+m4.metric("Señales analizadas", _NFEAT, "5 fuentes de datos")
 
 # ---------------------------------------------------------------------------
 # Tarjetas de navegación
