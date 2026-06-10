@@ -14,7 +14,7 @@ El foco está en artistas **poco conocidos o emergentes**, lo que implica datos 
 
 ```
 app.py               # Página de inicio del dashboard (Landing)
-styles.py
+styles.py            # Configuración del diseño de Streamlit
 artistas.txt         # Lista de nombres de artistas (input para el resolver)
 pages/
   styles.py          # Sistema de diseño compartido (CSS, paleta, componentes HTML)
