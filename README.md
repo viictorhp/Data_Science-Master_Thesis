@@ -4,7 +4,7 @@
 
 Proyecto fin de máster para predecir el **tier de sala** de artistas de rap/urbano español — es decir, el tamaño máximo de recinto que un artista puede llenar en España. El dataset cubre **182 artistas** de la escena urbana española, desde artistas completamente underground hasta nombres con presencia en festivales y palacios de deportes.
 
-El pipeline recoge datos de 6 fuentes (Spotify, Last.fm, YouTube, setlist.fm, Google Trends + YouTube reciente) mediante sus APIs, aplica ingeniería de características, y entrena modelos de clasificación multiclase. Los resultados se analizan en notebooks Jupyter.
+El pipeline recoge datos de 5 fuentes (Spotify, Last.fm, YouTube, setlist.fm y Google Trends) mediante sus APIs, aplica ingeniería de características, y entrena modelos de clasificación multiclase. Los resultados se analizan en notebooks Jupyter.
 
 El foco está en artistas **poco conocidos o emergentes**, lo que implica datos escasos o inexistentes en las APIs estándar y requiere validación y corrección manual.
 
