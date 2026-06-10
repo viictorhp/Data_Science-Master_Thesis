@@ -189,7 +189,7 @@ Usa `spotify_id` del registry para extraer features de discografía y top tracks
 - `data/raw/spotify_discografia.csv` — una fila por artista: `num_albums`, `num_singles`, `num_eps`, `num_total_releases`, `primer_lanzamiento`, `ultimo_lanzamiento`, `anos_activo`, `releases_por_ano`
 - `data/raw/spotify_top_tracks.csv` — una fila por canción (top 10/artista): `track_name`, `duration_ms`, `explicit`, `num_artistas`
 
-> `popularity` y `audio_features` (`danceability`, `energy`, `valence`...) eliminados — Spotify los bloqueó en noviembre 2024.[Fuente](https://developer.spotify.com/blog/2024-11-27-changes-to-the-web-api)
+> `popularity` y `audio_features` (`danceability`, `energy`, `valence`...) eliminados — Spotify los bloqueó en noviembre 2024.  [Fuente](https://developer.spotify.com/blog/2024-11-27-changes-to-the-web-api)
 
 ### Last.fm (`src/data_collectors/lastfmapi.py`)
 
