@@ -14,12 +14,13 @@ El foco está en artistas **poco conocidos o emergentes**, lo que implica datos 
 
 ```
 app.py               # Página de inicio del dashboard (Landing)
+styles.py
 artistas.txt         # Lista de nombres de artistas (input para el resolver)
 pages/
   styles.py          # Sistema de diseño compartido (CSS, paleta, componentes HTML)
-  1_Resultados.py    # Benchmark de modelos, confusión, feature importance y SHAP global
-  2_Prediccion.py    # Formulario de predicción con traza detallada y waterfall SHAP
-  3_Analisis_IA.py   # Chat con agente LangChain + Groq
+  1-results.py    # Benchmark de modelos, confusión, feature importance y SHAP global
+  2-prediction.py    # Formulario de predicción con traza detallada y waterfall SHAP
+  3-IA_analysis.py   # Chat con agente LangChain + Groq
 src/
   data_collectors/   # Clientes de API para ingesta de datos raw
     spotify_features.py  # Discografía y top tracks usando IDs del registry
