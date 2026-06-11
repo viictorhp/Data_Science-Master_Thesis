@@ -4,8 +4,6 @@ test_preprocess.py
 Tests unitarios de src/features/preprocess.py
 
 La función _imputar() se testa con DataFrames en memoria.
-La función cargar_datos() se testa con un CSV temporal generado por el fixture,
-por lo que no se necesita el fichero real artist_features.csv (gitignoreado).
 """
 
 import numpy as np

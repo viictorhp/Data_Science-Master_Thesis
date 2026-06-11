@@ -11,11 +11,6 @@ Variables generadas:
                releases_por_ano
   Top tracks:  track_name, duration_ms, explicit, num_artistas
 
-Notas:
-  - Usa spotify_id del registry directamente, sin búsqueda por nombre.
-  - audio_features: deprecado desde nov 2024, se omite.
-  - artist_spotify_tracks: requiere OAuth de usuario, se sustituye por search.
-
 Uso:
   python -m src.data_collectors.spotify_features
   python -m src.data_collectors.spotify_features --force Dano "Rels B"

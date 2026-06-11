@@ -5,7 +5,7 @@ Columnas del registry:
   nombre_canonico  — nombre canónico del artista (clave primaria)
   spotify_id       — Spotify artist ID
   spotify_nombre   — nombre tal como lo devuelve Spotify
-  spotify_score    — puntuación del match (0.0–1.0)
+  spotify_score    — puntuación del match (0.0 al 1.0)
   lastfm_nombre    — nombre tal como lo usa Last.fm
   lastfm_mbid      — MusicBrainz ID desde Last.fm
   lastfm_score     — puntuación del match

@@ -2,22 +2,6 @@
 shap_explainer.py
 =================
 Explicabilidad SHAP sobre el modelo XGBoost entrenado.
-
-Dos modos de uso:
-  - Global (dataset completo): bar plot de importancia media + beeswarm para
-    la clase ALTO. Se guardan como PNG en reports/figures/.
-  - Individual (una predicción): waterfall plot retornado como figura matplotlib,
-    listo para renderizar en Streamlit con st.pyplot().
-
-Uso desde scripts:
-    from src.models.shap_explainer import calcular_shap_global
-    rutas = calcular_shap_global(X)
-
-Uso desde Streamlit:
-    from src.models.shap_explainer import shap_waterfall_fig
-    fig, clase = shap_waterfall_fig(features_dict)
-    st.pyplot(fig, use_container_width=True)
-    plt.close(fig)
 """
 
 import json
