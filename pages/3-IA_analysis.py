@@ -43,7 +43,7 @@ if "prediccion" not in st.session_state:
         icon=":material/info:",
     )
     if st.button(":material/mic_external_on: Ir a Predicción", type="primary"):
-        st.switch_page("pages/2_Prediccion.py")
+        st.switch_page("pages/2-prediction.py")
     st.stop()
 
 pred      = st.session_state["prediccion"]
@@ -263,4 +263,4 @@ with col_side:
     if st.button(":material/restart_alt: Nueva predicción", use_container_width=True):
         reset_prediccion()
         log("Nueva predicción iniciada desde Análisis IA", "INFO")
-        st.switch_page("pages/2_Prediccion.py")
+        st.switch_page("pages/2-prediction.py")

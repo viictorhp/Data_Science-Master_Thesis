@@ -96,10 +96,10 @@ st.markdown(
 c_a, c_b, _ = st.columns([1, 1, 2])
 with c_a:
     if st.button(":material/play_arrow: Probar con un artista", use_container_width=True):
-        st.switch_page("pages/2_Prediccion.py")
+        st.switch_page("pages/2-prediction.py")
 with c_b:
     if st.button(":material/analytics: Ver resultados del modelo", use_container_width=True, type="secondary"):
-        st.switch_page("pages/1_Resultados.py")
+        st.switch_page("pages/1-results.py")
 
 # ---------------------------------------------------------------------------
 # Métricas resumen
@@ -123,7 +123,7 @@ with n1:
         accent="violet",
     ), unsafe_allow_html=True)
     if st.button("Explorar resultados", key="nav_res", use_container_width=True, type="secondary"):
-        st.switch_page("pages/1_Resultados.py")
+        st.switch_page("pages/1-results.py")
 
 with n2:
     st.markdown(nav_card(
@@ -133,7 +133,7 @@ with n2:
         accent="lime",
     ), unsafe_allow_html=True)
     if st.button("Lanzar predicción", key="nav_pred", use_container_width=True):
-        st.switch_page("pages/2_Prediccion.py")
+        st.switch_page("pages/2-prediction.py")
 
 with n3:
     st.markdown(nav_card(
@@ -143,7 +143,7 @@ with n3:
         accent="pink",
     ), unsafe_allow_html=True)
     if st.button("Conversar con el agente", key="nav_ai", use_container_width=True, type="secondary"):
-        st.switch_page("pages/3_Analisis_IA.py")
+        st.switch_page("pages/3-IA_analysis.py")
 
 divider()
 
