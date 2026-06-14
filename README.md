@@ -515,7 +515,7 @@ Ambos plots se renderizan automáticamente en el dashboard:
 
 ## Dashboard Streamlit (`app.py` · `pages/`)
 
-> **🚀 App desplegada:** [datascience-masterthesis-rszvqcfaehgxdhnxbaaz3a.streamlit.app](https://datascience-masterthesis-rszvqcfaehgxdhnxbaaz3a.streamlit.app/)
+> **🚀 App desplegada:** [Streamlit app](https://datascience-masterthesis-rszvqcfaehgxdhnxbaaz3a.streamlit.app/)
 
 ### Arranque local
 
