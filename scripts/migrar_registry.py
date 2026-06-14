@@ -1,7 +1,5 @@
 """
 Migración inicial: construye config/artistas_registry.csv desde los CSVs ya existentes.
-
-Ejecutar UNA SOLA VEZ tras instalar el nuevo sistema de registry.
 No consume cuota de API — lee los ficheros que ya tienes en data/raw/.
 
 Regla de seguridad:
